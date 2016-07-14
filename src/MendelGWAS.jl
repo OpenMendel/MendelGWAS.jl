@@ -163,8 +163,7 @@ function gwas_option(person::Person, snpdata::SnpData,
       snp_model = fit(GeneralizedLinearModel, fm, model.df,
         keyword["distribution"], keyword["link"])
     end
-###
-    pvalue[snp] = coeftable(snp_model).mat[end, end]
+    pvalue[snp] = coeftable(snp_model).cols[end][end].v
     #
     # Output regression results for potentially significant SNPs.
     #
