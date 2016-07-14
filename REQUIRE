@@ -1,1 +1,8 @@
 julia 0.4
+MendelBase
+SnpArrays
+DataFrames
+Distributions
+GLM
+PyPlot
+StatsBase
