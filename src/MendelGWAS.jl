@@ -67,7 +67,7 @@ function GWAS(control_file = ""; args...)
     locus_frame, phenotype_frame, pedigree_frame, snp_definition_frame) =
     read_external_data_files(keyword)
   #
-  # Execute the specifed analysis.
+  # Execute the specified analysis.
   #
   println(" \nAnalyzing the data.\n")
   execution_error = gwas_option(person, snpdata, pedigree_frame, keyword)
@@ -77,7 +77,7 @@ function GWAS(control_file = ""; args...)
     println(" \n \nMendel's analysis is finished.\n")
   end
   #
-  # Finish up by closing and thus flushing, any output files.
+  # Finish up by closing, and thus flushing, any output files.
   # Return to the initial directory.
   #
   close(keyword["output_unit"])
