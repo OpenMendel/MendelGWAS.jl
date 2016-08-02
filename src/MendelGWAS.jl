@@ -3,20 +3,20 @@ This module orchestrates a GWAS analysis.
 """
 module MendelGWAS
 #
-# Other OpenMendel modules.
+# Required OpenMendel packages and modules.
 #
-# using DataStructures
-# using GeneticUtilities
 using MendelBase
+# using DataStructures                  # Now in MendelBase.
+# using GeneticUtilities                # Now in MendelBase.
 using SnpArrays
 #
-# External modules.
+# Required external modules.
 #
-using DataFrames    # From package DataFrames.
-using Distributions # From package Distributions.
-using GLM           # From package GLM.
-using PyPlot        # From package PyPlot.
-using StatsBase     # From package StatsBase.
+using DataFrames                        # From package DataFrames.
+using Distributions                     # From package Distributions.
+using GLM                               # From package GLM.
+using PyPlot                            # From package PyPlot.
+using StatsBase                         # From package StatsBase.
 
 export GWAS
 
@@ -42,9 +42,13 @@ function GWAS(control_file = ""; args...)
   #
   keyword = set_keyword_defaults!(Dict{ASCIIString, Any}())
   #
-  # Keywords unique to this analysis may be defined here
+  # Keywords unique to this analysis should be first defined here
   # by setting their default values using the format:
-  # keyword["some_keyword_name"] = value
+  # keyword["some_keyword_name"] = default_value
+  #
+  keyword["regression"] = ""
+  keyword["regression_formula"] = ""
+  keyword["manhattan_plot_file"] = "Manhattan_Plot.png"
   #
   # Process the run-time user-specified keywords that will control the analysis.
   # This will also initialize the random number generator.
@@ -95,6 +99,27 @@ function gwas_option(person::Person, snpdata::SnpData,
   snps = snpdata.snps
   io = keyword["output_unit"]
   #
+  # Recognize the two basic GWAS regression models: linear and logistic.
+  #
+  regression_type = lowercase(keyword["regression"])
+  if regression_type == "linear"
+    keyword["distribution"] = Normal()
+    keyword["link"] = IdentityLink()
+  elseif regression_type == "logistic"
+    keyword["distribution"] = Binomial()
+    keyword["link"] = LogitLink()
+  elseif regression_type == ""
+    if keyword["distribution"] == "" || keyword["link"] == ""
+      throw(ArgumentError(
+        "If keyword regression is not assigned, then the keywords\n" *
+        "'distribution' and 'link' must be assigned names of functions."))
+    end
+  else
+    throw(ArgumentError(
+     "The keyword regression (currently: $regression_type) must be assigned\n" *
+     "the value 'linear', 'logistic', or blank."))
+  end
+  #
   # Retrieve the regression formula and create a model frame.
   #
   regression_formula = keyword["regression_formula"]
@@ -121,8 +146,9 @@ function gwas_option(person::Person, snpdata::SnpData,
   # Regress on the non-SNP predictors.
   #
   base_model = glm(fm, model.df, Normal(), IdentityLink())
-  println(io, "Summary for base Model:")
+  println(io, "Summary for Base Model: \n ")
   print(io, base_model)
+  println(io, "")
   #
   # To ensure that the trait and SNPs occur in the same order, sort the
   # the model dataframe by the entry-order column of the pedigree frame.
@@ -157,7 +183,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     # and SqrtLink.
     #
     model.df[:SNP] = dosage
-    if keyword["distribution"] == Normal() && keyword["link"] == IdentityLink()
+    if regression_type == "linear"
       snp_model = fit(LinearModel, fm, model.df)
     else
       snp_model = fit(GeneralizedLinearModel, fm, model.df,
@@ -168,15 +194,16 @@ function gwas_option(person::Person, snpdata::SnpData,
     # Output regression results for potentially significant SNPs.
     #
     if pvalue[snp] < 0.05 / snps
-      println(io, "")
+      println(io, " \n")
       println(io, "Summary for SNP ", snpdata.snpid[snp], ":")
-      println(io, "Minor Allele Frequency: ", snpdata.maf)
+      println(io, "SNP p-value: ", signif(pvalue[snp],6))
+      println(io, "Minor Allele Frequency: ", round(snpdata.maf[snp],4))
       if uppercase(snpdata.chromosome[1]) == "X"
         hw = xlinked_hardy_weinberg_test(dosage, person.male)
       else
         hw = hardy_weinberg_test(dosage)
       end
-      println(io, "Hardy-Weinberg Pvalue: ", round(hw, 5))
+      println(io, "Hardy-Weinberg p-value: ", round(hw, 4))
       println(io, "")
       println(io, snp_model)
     end
@@ -188,11 +215,16 @@ function gwas_option(person::Person, snpdata::SnpData,
   (number_passing, threshold) = simes_fdr(pvalue, fdr, snps)
   println(io, "")
   println(io, )
-  println(io, "             P-value    Number of Passing")
-  println(io, "    FDR       Threshold     Predictors")
+  println(io, "             p-value    Number of Passing")
+  println(io, "    FDR     Threshold     Predictors")
   for i = 1:length(fdr)
-    println(io, "    ", round(fdr[i], 6), "      ", round(threshold[i], 6),
-      "      ", number_passing[i])
+    if i < 3
+      println(io, "    ", round(fdr[i], 2), "     ", round(threshold[i], 6),
+        "      ", number_passing[i])
+    else
+      println(io, "    ", round(fdr[i], 2), "      ", round(threshold[i], 6),
+        "      ", number_passing[i])
+    end
   end
   #
   # Sort the SNPs by chromosome and basepair location.
