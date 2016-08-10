@@ -8,6 +8,7 @@ module MendelGWAS
 using MendelBase
 # using DataStructures                  # Now in MendelBase.
 # using GeneticUtilities                # Now in MendelBase.
+# using GeneralUtilities                # Now in MendelBase.
 using SnpArrays
 #
 # Required external modules.
@@ -46,9 +47,13 @@ function GWAS(control_file = ""; args...)
   # by setting their default values using the format:
   # keyword["some_keyword_name"] = default_value
   #
-  keyword["regression"] = ""
+  keyword["distribution"] = "" # Binomial(), Gamma(), Normal(), Poisson(), etc.
+  keyword["link"] = "" # LogitLink(), IdentityLink(), LogLink(), etc.
+  keyword["lrt_threshold"] = 5e-8
+  keyword["maf_threshold"] = 0.01
+  keyword["manhattan_plot_file"] = ""
+  keyword["regression"] = ""   # Linear, Logistic, or Poisson
   keyword["regression_formula"] = ""
-  keyword["manhattan_plot_file"] = "Manhattan_Plot.png"
   #
   # Process the run-time user-specified keywords that will control the analysis.
   # This will also initialize the random number generator.
@@ -98,26 +103,54 @@ function gwas_option(person::Person, snpdata::SnpData,
   people = person.people
   snps = snpdata.snps
   io = keyword["output_unit"]
+  lrt_threshold = keyword["lrt_threshold"]
+  maf_threshold = keyword["maf_threshold"]
   #
-  # Recognize the two basic GWAS regression models: linear and logistic.
+  # Recognize the three basic GWAS regression models:
+  # Linear, Logistic, and Poisson.
+  # For these three we will use fast internal regression code.
   #
   regression_type = lowercase(keyword["regression"])
-  if regression_type == "linear"
+  distribution_family = keyword["distribution"]
+  link = keyword["link"]
+  if regression_type == "linear" ||
+     (distribution_family == Normal() && link == IdentityLink())
     keyword["distribution"] = Normal()
     keyword["link"] = IdentityLink()
-  elseif regression_type == "logistic"
+    keyword["regression"] = "linear"
+    fast_method = true
+  elseif regression_type == "logistic" ||
+     (distribution_family == Binomial() && link == LogitLink())
     keyword["distribution"] = Binomial()
     keyword["link"] = LogitLink()
-  elseif regression_type == ""
-    if keyword["distribution"] == "" || keyword["link"] == ""
-      throw(ArgumentError(
-        "If keyword regression is not assigned, then the keywords\n" *
-        "'distribution' and 'link' must be assigned names of functions."))
-    end
+    keyword["regression"] = "logistic"
+    fast_method = true
+  elseif regression_type == "poisson" ||
+     (distribution_family == Poisson() && link == LogLink())
+    keyword["distribution"] = Poisson()
+    keyword["link"] = LogLink()
+    keyword["regression"] = "poisson"
+    fast_method = true
+  elseif regression_type == "" && distribution_family == "" && link == ""
+    throw(ArgumentError(
+      "No regression type has been defined for this analysis.\n" *
+      "Set the keyword regression to either:\n" *
+      "  linear (for usual quantitative traits),\n" *
+      "  logistic (for usual qualitative traits),\n" *
+      "  poisson, or blank (for unusual analyses).\n" *
+      "If keyword regression is not assigned, then the keywords\n" *
+      "'distribution' and 'link' must be assigned names of functions.\n"))
   else
+    fast_method = false
+  end
+  regression_type = lowercase(keyword["regression"])
+  distribution_family = keyword["distribution"]
+  link = keyword["link"]
+  if regression_type != "" && regression_type != "linear" &&
+     regression_type != "logistic" && regression_type != "poisson"
     throw(ArgumentError(
      "The keyword regression (currently: $regression_type) must be assigned\n" *
-     "the value 'linear', 'logistic', or blank."))
+     "the value 'linear', 'logistic', 'poisson', or blank.\n"))
   end
   #
   # Retrieve the regression formula and create a model frame.
@@ -129,83 +162,144 @@ function gwas_option(person::Person, snpdata::SnpData,
   fm = Formula(lhs, rhs)
   model = ModelFrame(fm, pedigree_frame)
   #
-  # Change sex designations to -1 (females) and  +1 (males).
+  # Change sex designations to -1 (females) and +1 (males).
+  # Since the field :sex may have type string,
+  # we create a new field of type Float64 that will replace :sex.
   #
   if searchindex(string(rhs), "Sex") > 0 && in(:Sex, names(model.df))
+    model.df[:SexInt] = ones(person.people)
     for i = 1:person.people
       s = model.df[i, :Sex]
       if !isa(parse(string(s), raise=false), Number); s = lowercase(s); end
-      if s in keyword["male"]
-        model.df[i, :Sex] = 1.0
-      else
-        model.df[i, :Sex] = -1.0
-      end
+      if !(s in keyword["male"]); model.df[i, :SexInt] = -1.0; end
     end
+    names_list = names(model.df)
+    deleteat!(names_list, findin(names_list, [:Sex]))
+    model.df = model.df[:, names_list]
+    rename!(model.df, :SexInt, :Sex)
   end
-  #
-  # Regress on the non-SNP predictors.
-  #
-  base_model = glm(fm, model.df, Normal(), IdentityLink())
-  println(io, "Summary for Base Model: \n ")
-  print(io, base_model)
-  println(io, "")
   #
   # To ensure that the trait and SNPs occur in the same order, sort the
   # the model dataframe by the entry-order column of the pedigree frame.
   #
   model.df[:EntryOrder] = pedigree_frame[:EntryOrder]
-  sort!(model.df, cols = [:EntryOrder]) 
+  sort!(model.df, cols = [:EntryOrder])
   #
-  # Add a column to the Pedigree frame to hold the SNP dosages.
-  # Change the regression formula to include the current SNP.
+  # First consider the base model with no SNPs included.
+  # If using one of the standard regression models,
+  # then use the fast regression code in OpenMendel's general utilities file.
+  # Otherwise, for general distributions, use the code in the GLM package.
   #
-  model.df[:SNP] = @data(zeros(people))
+  if fast_method
+    #
+    # Copy the complete rows into a design matrix X and a response vector y.
+    #
+    mm = ModelMatrix(model) # Extract the model matrix with missing values.
+    complete = complete_cases(model.df)
+    cases = sum(complete)
+    predictors = size(mm.m, 2)
+    X = zeros(cases, predictors)
+    for j = 1:predictors
+      X[:, j] = mm.m[complete, j]
+    end
+    y = zeros(cases)
+    y[1:end] = model.df[complete, 1]
+    #
+    # Estimate parameters under the base model. Output results.
+    #
+    (base_estimate, base_loglikelihood) = regress(X, y, regression_type)
+    println(io, " ")
+    println(io, "Summary for Base Model with ", fm)
+    println(io, "Regression Model: ", regression_type)
+    println(io, "Link Function: ", "canonical")
+    name_list = names(model.df)
+    model_names = size(name_list,1)
+    println(io, "Base Components Effect Estimates: ")
+    println(io, "   (Intercept) : ", signif(base_estimate[1], 6))
+    for j = 2:model_names-1
+      println(io, "   ", name_list[j], " : ", signif(base_estimate[j], 6))
+    end
+    println(io, "Base Loglikelihood: ", signif(base_loglikelihood, 8))
+    println(io, " ")
+  else
+    #
+    # Let the GLM package estimate parameters. Output results.
+    #
+    base_model = glm(fm, model.df, distribution_family, link)
+    println(io, "Summary for Base Model:\n ")
+    print(io, base_model)
+    println(io, " ")
+  end
+  #
+  # Now consider the alternative model with a SNP included.
+  # Add a column to the design matrix to hold the SNP dosages.
+  # Change the regression formula to include the SNP.
+  #
+  X = [X zeros(cases)]
   rhs = parse(side[2] * " + " * "SNP")
   fm = Formula(lhs, rhs)
   #
-  # Analyze the SNP predictors one by one. These will be inserted
-  # into the extra column of the Pedigree frame.
+  # Analyze the SNP predictors one by one.
   #
   dosage = zeros(people)
   pvalue = ones(snps)
   for snp = 1:snps
-    if snpdata.maf[snp] <= 0.01; continue; end
+    #
+    # Ignore SNPs with MAF below the specified threshold.
+    #
+    if snpdata.maf[snp] <= maf_threshold; continue; end
     #
     # Copy the current SNP genotypes into a dosage vector.
     #
     copy!(dosage, slice(snpdata.snpmatrix, :, snp); impute = false)
     #
-    # Estimate parameters for the SNP model. Typical distributions for
-    # use with glm and their canonical link functions are Binomial (LogitLink),
-    # Gamma (InverseLink), Normal (IdentityLink), and Poisson (LogLink).
-    # The currently available (as of 2015) Link types are CauchitLink, 
-    # CloglogLink, IdentityLink, InverseLink, LogitLink, LogLink, ProbitLink, 
-    # and SqrtLink.
+    # For the three basic regression types, analyze the alternative model
+    # using internal score test code. If the score test p-value
+    # is below the specified threshold, carryout a likelihood ratio test.
     #
-    model.df[:SNP] = dosage
-    if regression_type == "linear"
-      snp_model = fit(LinearModel, fm, model.df)
-    else
+    if fast_method 
+      X[:, end] = dosage[complete]
+      estimate = [base_estimate; 0.0]
+      score_test = glm_score_test(X, y, estimate, regression_type)
+      pvalue[snp] = ccdf(Chisq(1), score_test)
+      if pvalue[snp] < lrt_threshold
+        (estimate, loglikelihood) = regress(X, y, regression_type)
+        lrt = 2.0 * (loglikelihood - base_loglikelihood)
+        pvalue[snp] = ccdf(Chisq(1), lrt)
+      end
+    #
+    # For other distributions analyze the alternative model
+    # using the GLM package.
+    #
+    else 
+      model.df[:SNP] = dosage
       snp_model = fit(GeneralizedLinearModel, fm, model.df,
-        keyword["distribution"], keyword["link"])
+        distribution_family, link)
+      pvalue[snp] = coeftable(snp_model).cols[end][end].v
     end
-    pvalue[snp] = coeftable(snp_model).cols[end][end].v
     #
     # Output regression results for potentially significant SNPs.
     #
     if pvalue[snp] < 0.05 / snps
       println(io, " \n")
-      println(io, "Summary for SNP ", snpdata.snpid[snp], ":")
-      println(io, "SNP p-value: ", signif(pvalue[snp],6))
-      println(io, "Minor Allele Frequency: ", round(snpdata.maf[snp],4))
-      if uppercase(snpdata.chromosome[1]) == "X"
+      println(io, "Summary for SNP ", snpdata.snpid[snp])
+      println(io, " on chromosome ", snpdata.chromosome[snp],
+        " at basepair ", snpdata.basepairs[snp])
+      println(io, "SNP p-value: ", signif(pvalue[snp], 6))
+      println(io, "Minor Allele Frequency: ", round(snpdata.maf[snp], 4))
+      if uppercase(snpdata.chromosome[snp]) == "X"
         hw = xlinked_hardy_weinberg_test(dosage, person.male)
       else
         hw = hardy_weinberg_test(dosage)
       end
       println(io, "Hardy-Weinberg p-value: ", round(hw, 4))
-      println(io, "")
-      println(io, snp_model)
+      if fast_method
+        println(io, "SNP Effect Estimate: ", signif(estimate[end], 4))
+        println(io, "SNP Effect Loglikelihood: ", signif(loglikelihood, 8))
+      else
+        println(io, "")
+        println(io, snp_model)
+      end
     end
   end
   #
@@ -213,40 +307,39 @@ function gwas_option(person::Person, snpdata::SnpData,
   #
   fdr = [0.01, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
   (number_passing, threshold) = simes_fdr(pvalue, fdr, snps)
-  println(io, "")
-  println(io, )
-  println(io, "             p-value    Number of Passing")
-  println(io, "    FDR     Threshold     Predictors")
+  println(io, " \n \n ")
+  println(io, "        P-value   Number of Passing")
+  println(io, "FDR    Threshold     Predictors \n")
   for i = 1:length(fdr)
-    if i < 3
-      println(io, "    ", round(fdr[i], 2), "     ", round(threshold[i], 6),
-        "      ", number_passing[i])
-    else
-      println(io, "    ", round(fdr[i], 2), "      ", round(threshold[i], 6),
-        "      ", number_passing[i])
-    end
+    @printf(io,"%4.2f   %8.5f   %9i\n", fdr[i], threshold[i], number_passing[i])
   end
+  println(io, " ")
   #
-  # Sort the SNPs by chromosome and basepair location.
+  # If requested, output a Manhattan Plot in .png format.
+  # First, create a new dataframe that will hold the SNP data to plot.
+  # Next, sort the data by chromosome and basepair location.
   #
-  manhattan_frame = DataFrame()
-  manhattan_frame[:NegativeLogPvalue] = -log10(pvalue)
-  manhattan_frame[:Basepairs] = snpdata.basepairs
-  manhattan_frame[:Chromosome] = snpdata.chromosome
-  sort!(manhattan_frame::DataFrame, cols = [:Chromosome, :Basepairs])
-  #
-  # Print a Manhattan plot of the pvalues.
-  #
-  x = collect(1:snps)
-  y = manhattan_frame[:NegativeLogPvalue]
-  plot(x, y, ".")
-  title("Manhattan Plot of Negative Log P-values")
-  xlabel("Chromosome Location")
-  ylabel("-log p-value")
   plot_file = keyword["manhattan_plot_file"]
-  plot_format = split(plot_file, ".")[2]
-  savefig(plot_file, format = plot_format)
-  close()
+  if plot_file != ""
+    if !contains(plot_file, ".png"); string(plot_file, ".png"); end
+    manhattan_frame = DataFrame()
+    manhattan_frame[:NegativeLogPvalue] = -log10(pvalue)
+    manhattan_frame[:Basepairs] = snpdata.basepairs
+    manhattan_frame[:Chromosome] = snpdata.chromosome
+    sort!(manhattan_frame::DataFrame, cols = [:Chromosome, :Basepairs])
+    #
+    # Use the PyPlot package to create a .png Manhattan plot of the p-values.
+    #
+    x = collect(1:snps)
+    y = manhattan_frame[:NegativeLogPvalue]
+    plot(x, y, ".")
+    title("Manhattan Plot of Negative Log P-values")
+    xlabel("SNP")
+    ylabel("-log10(p-value)")
+    plot_format = split(plot_file, ".")[2]
+    savefig(plot_file, format = plot_format)
+  end
+  close(io)
   return execution_error = false
 end # function gwas_option
 

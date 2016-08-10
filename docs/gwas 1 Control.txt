@@ -5,7 +5,7 @@ plink_input_basename = gwas 1 data
 output_file = gwas 1 Output.txt
 manhattan_plot_file = gwas 1 Manhattan Plot Output.png
 #
-# Analysis parameters.
+# Analysis parameters for GWAS option.
 #
 regression = linear
 regression_formula = Trait ~ Sex
