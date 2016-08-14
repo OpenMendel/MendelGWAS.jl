@@ -139,7 +139,7 @@ function gwas_option(person::Person, snpdata::SnpData,
       "  logistic (for usual qualitative traits),\n" *
       "  poisson, or blank (for unusual analyses).\n" *
       "If keyword regression is not assigned, then the keywords\n" *
-      "'distribution' and 'link' must be assigned names of functions.\n"))
+      "'distribution' and 'link' must be assigned names of functions.\n \n"))
   else
     fast_method = false
   end
@@ -150,33 +150,82 @@ function gwas_option(person::Person, snpdata::SnpData,
      regression_type != "logistic" && regression_type != "poisson"
     throw(ArgumentError(
      "The keyword regression (currently: $regression_type) must be assigned\n" *
-     "the value 'linear', 'logistic', 'poisson', or blank.\n"))
+     "the value 'linear', 'logistic', 'poisson', or blank.\n \n"))
   end
   #
   # Retrieve the regression formula and create a model frame.
   #
   regression_formula = keyword["regression_formula"]
+  if regression_formula == ""
+    throw(ArgumentError(
+      "The keyword regression_formula appears blank.\n" *
+      "A regression formula must be provided.\n \n"))
+  end
+  if !contains(regression_formula, "~")
+    throw(ArgumentError(
+      "The value of the keyword regression_formula ($regression_formula)\n" *
+      "does not contain the required '~' that should separate\n" *
+      "the trait and the predictors.\n \n"))
+  end
   side = split(regression_formula, "~")
+  side[1] = strip(side[1])
+  side[2] = strip(side[2])
+  if side[1] == ""
+    throw(ArgumentError(
+      "The left hand side of the formula specified in\n" *
+      "the keyword regression_formula appears blank.\n" *
+      "This should be the name of the trait field in the Pedigree file.\n \n"))
+  end
+  if side[2] == ""; side[2] = "1"; end
   lhs = parse(side[1])
   rhs = parse(side[2])
+  if !(lhs in names(pedigree_frame))
+    lhs_string = string(lhs)
+    throw(ArgumentError(
+      "The field named on the left hand side of the formula specified in\n" *
+      "the keyword regression_formula (currently: $lhs_string)\n" *
+      "is not in the Pedigree data file.\n \n"))
+  end
   fm = Formula(lhs, rhs)
   model = ModelFrame(fm, pedigree_frame)
   #
-  # Change sex designations to -1 (females) and +1 (males).
+  # Change sex designations to -1.0 (females) and +1.0 (males).
   # Since the field :sex may have type string,
-  # we create a new field of type Float64 that will replace :sex.
+  # create a new field of type Float64 that will replace :sex.
   #
   if searchindex(string(rhs), "Sex") > 0 && in(:Sex, names(model.df))
-    model.df[:SexInt] = ones(person.people)
+    model.df[:NewSex] = ones(person.people)
     for i = 1:person.people
       s = model.df[i, :Sex]
       if !isa(parse(string(s), raise=false), Number); s = lowercase(s); end
-      if !(s in keyword["male"]); model.df[i, :SexInt] = -1.0; end
+      if !(s in keyword["male"]); model.df[i, :NewSex] = -1.0; end
     end
     names_list = names(model.df)
     deleteat!(names_list, findin(names_list, [:Sex]))
     model.df = model.df[:, names_list]
-    rename!(model.df, :SexInt, :Sex)
+    rename!(model.df, :NewSex, :Sex)
+  end
+  #
+  # For Logistic regression make sure the cases are 1.0,
+  # non-cases are 0.0, and missing data is NaN.
+  # Again, since the trait field may be of type string,
+  # create a new field of type Float64 that will replace it.
+  #
+  case_label = keyword["affected_designator"]
+  if regression_type == "logistic" && case_label != ""
+    model.df[:NewTrait] = zeros(person.people)
+    for i = 1:person.people
+      s = string(model.df[i, lhs])
+      if s == ""
+        model.df[i, :NewTrait] = NaN
+      elseif s == case_label
+        model.df[i, :NewTrait] = 1.0
+      end
+    end
+    names_list = names(model.df)
+    deleteat!(names_list, findin(names_list, [lhs]))
+    model.df = model.df[:, names_list]
+    rename!(model.df, :NewTrait, lhs)
   end
   #
   # To ensure that the trait and SNPs occur in the same order, sort the
@@ -236,7 +285,11 @@ function gwas_option(person::Person, snpdata::SnpData,
   # Change the regression formula to include the SNP.
   #
   X = [X zeros(cases)]
-  rhs = parse(side[2] * " + " * "SNP")
+  if side[2] == ""
+    rhs = parse("SNP")
+  else
+    rhs = parse(side[2] * " + " * "SNP")
+  end
   fm = Formula(lhs, rhs)
   #
   # Analyze the SNP predictors one by one.
