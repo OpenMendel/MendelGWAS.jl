@@ -115,13 +115,13 @@ regression_formula = Trait ~ Sex
 <tbody>
 <tr>
 <td>distribution</td>
-<td>""</td>
+<td></td>
 <td>Binomial(), Gamma(), Normal(), Poisson(), etc.</td>
 <td>Name of distribution</td>
 </tr>
 <tr>
 <td>link</td>
-<td>""</td>
+<td></td>
 <td>LogitLink(), IdentityLink(), LogLink(), etc.</td>
 <td>Name of link function</td>
 </tr>
@@ -129,31 +129,31 @@ regression_formula = Trait ~ Sex
 <td>lrt_threshold</td>
 <td>5e-8</td>
 <td></td>
-<td></td>
+<td>Threshold for the score test p-value below which a likelihood ratio test is performed</td>
 </tr>
 <tr>
 <td>maf_threshold</td>
 <td>0.01</td>
 <td></td>
-<td></td>
+<td>Threshold for the minor allele frequency below which SNPs are not analyzed</td>
 </tr>
 <tr>
 <td>manhattan_plot_file</td>
-<td>""</td>
 <td></td>
 <td></td>
+<td>Name of file to hold Manhattan plot</td>
 </tr>
 <tr>
 <td>regression</td>
-<td>""</td>
-<td>Linear, Logistic, or Poisson</td>
 <td></td>
+<td>Linear, Logistic, or Poisson</td>
+<td>Type of standard regression to perform; if left blank, the keywords distribution and link must be assigned values</td>
 </tr>
 <tr>
 <td>regression_formula</td>
-<td>""</td>
 <td></td>
 <td></td>
+<td>The regression model to analyze, see the text for full description</td>
 </tr>
 </tbody>
 </table>
