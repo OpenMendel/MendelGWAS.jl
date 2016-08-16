@@ -34,12 +34,12 @@
         <h3>
 <a id="overview" class="anchor" href="#overview" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Overview</h3>
 
-<p>Mendel GWAS is a component of the umbrella <a href="https://openmendel.github.io">OpenMendel</a> project. This analysis option can performs a standard Genome-wide Association Study (GWAS) to assess many common genetic variants in different individuals to see if any variant is associated with a trait.</p>
+<p>Mendel GWAS is a component of the umbrella <a href="https://openmendel.github.io">OpenMendel</a> project. This analysis option performs a standard Genome-Wide Association Study (GWAS) to assess common genetic variants in unrelated individuals.</p>
 
 <h3>
 <a id="appropriate-problems-and-data-sets" class="anchor" href="#appropriate-problems-and-data-sets" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Appropriate Problems and Data Sets</h3>
 
-<p>Mendel GWAS analysis input data is unrelated individuals genotyped at a large number of autosomal or X-linked SNPs. Mendel GWAS uses binary SNP data files.</p>
+<p>Mendel GWAS analysis input data is unrelated individuals genotyped at a large number of autosomal or X-linked SNPs. Mendel GWAS uses the compressed SNP data files. </p>
 
 <h3>
 <a id="installation" class="anchor" href="#installation" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Installation</h3>
@@ -95,13 +95,13 @@ regression = linear
 regression_formula = Trait ~ Sex
 </code></pre>
 
-<p>In the example above, there are five keywords. The keyword <em>plink_input_basename</em> tells MendelGWAS that the input data files will comprise three <a href="http://pngu.mgh.harvard.edu/%7Epurcell/plink/data.shtml">PLINK format</a> data files: <em>gwas 1 data.fam</em>, <em>gwas 1 data.bim</em>, and <em>gwas 1 data.bed</em>. The next two keywords specify the output files: <em>gwas 1 Output.txt</em> the results file - and <em>gwas 1 Manhattan Plot Output.png</em> - a plot of the results. The last two keywords specify analysis parameters. The text after the '=' are the keyword values.</p>
+<p>In the example above, there are five keywords. The keyword <em>plink_input_basename</em> tells MendelGWAS that the input data files will comprise three <a href="http://pngu.mgh.harvard.edu/%7Epurcell/plink/data.shtml">PLINK format</a> data files: <em>gwas 1 data.fam</em>, <em>gwas 1 data.bim</em>, and <em>gwas 1 data.bed</em>. The next two keywords specify the output files: <em>gwas 1 Output.txt</em> the results file - and <em>gwas 1 Manhattan Plot Output.png</em> - a plot of the results. The last two keywords specify analysis parameters. The text after the " = " are the keyword values.</p>
 
 <h3>
 <a id="keywords" class="anchor" href="#keywords" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Keywords<a id="keywords-table"></a>
 </h3>
 
-<p>This is a list of OpenMendel keywords specific to GWAS. A list of OpenMendel keywords common to most analysis package can be found <a href="https://openmendel.github.io/MendelBase.jl/#keywords-table">here</a>. The names of keywords are <em>not</em> case sensitive. (The keyword values <em>may</em> be case sensitive.)</p>
+<p>This is a list of OpenMendel keywords specific to GWAS. A list of OpenMendel keywords common to most analysis package can be found <a href="https://openmendel.github.io/MendelBase.jl/#keywords-table">here</a>. The names of keywords are <em>not</em> case sensitive. (The keyword <em>values</em> may be case sensitive.)</p>
 
 <table>
 <thead>
@@ -153,17 +153,17 @@ regression_formula = Trait ~ Sex
 <td>regression_formula</td>
 <td></td>
 <td></td>
-<td>Defines the regression model to analyze, see below for a full description</td>
+<td>Defines the regression model to analyze under the null hypothesis. see below for a description of the syntax to use</td>
 </tr>
 </tbody>
 </table>
 
-<p>The value for the keyword regression_formula takes the following form: the trait variable is separated from the predictors by " ~ ". For example, <code>regression_formula = Case_Control ~ Sex + BMI</code> means the trait labeled Case_Control will be modeled as a grand mean (intercept term) along with the covariates of Sex and BMI. Case_Control and BMI must be field names used in the pedigree file. (If you use a PLINK style FAM file, which does not use a header row, then the trait value should be referred to as "Trait".) Interactions between predictors are represented in the regression_formula using an "&amp;", for example, <code>Case_Control ~ Sex + BMI + Sex&amp;BMI</code> would add the interaction term to the previous main effects. If the right hand side (after the "~") is blank, then the model uses only the grand mean.</p>
+<p>The value for the keyword regression_formula takes the following form: the trait variable is separated from the predictors by " ~ ". For example, <code>regression_formula = Case_Control ~ Sex + BMI</code> means the trait labeled Case_Control will be modeled as a grand mean (intercept term) along with the covariates of Sex and BMI. Case_Control and BMI must be field names used in the pedigree file. (If you use a PLINK style FAM file, which does not use a header row, then the trait value should be referred to as "Trait".) Interactions between predictors are represented in the regression_formula using an "&amp;", for example, <code>Case_Control ~ Sex + BMI + Sex&amp;BMI</code> would add the interaction term to the previous main effects. (A product term, for example, Sex*BMI, is a short cut for main effects plus their interaction.) If the right hand side (after the " ~ ") is blank, then the model uses only the grand mean. Do not include a term for the SNPs as that is added automatically for each alternative model.</p>
 
 <h3>
 <a id="data-files" class="anchor" href="#data-files" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Data Files</h3>
 
-<p>GWAS requires a <a href="https://openmendel.github.io/MendelBase.jl/#control-file">Control file</a>, and a <a href="https://openmendel.github.io/MendelBase.jl/#pedigree-file">Pedigree file</a>. Genotype data is provided in a <a href="https://openmendel.github.io/MendelBase.jl/#snp-data-file">SNP data file</a>, with a <a href="https://openmendel.github.io/MendelBase.jl/#snp-definition-file">SNP Definition File</a> describing the SNPs. OpenMendel will also accept <a href="http://pngu.mgh.harvard.edu/%7Epurcell/plink/data.shtml">PLINK format</a> FAM and BIM files. Details on the format and contents of the Control and data files can be found on the <a href="https://openmendel.github.io/MendelBase.jl">MendelBase</a> documentation page. There are example data files in the GWAS <a href="https://github.com/OpenMendel/MendelGWAS.jl/tree/master/docs">docs</a> folder.</p>
+<p>GWAS requires a <a href="https://openmendel.github.io/MendelBase.jl/#control-file">Control file</a> and a <a href="https://openmendel.github.io/MendelBase.jl/#pedigree-file">Pedigree file</a>. Genotype data is provided in a <a href="https://openmendel.github.io/MendelBase.jl/#snp-data-file">SNP data file</a>, with a <a href="https://openmendel.github.io/MendelBase.jl/#snp-definition-file">SNP Definition File</a> describing the SNPs. OpenMendel will also accept <a href="http://pngu.mgh.harvard.edu/%7Epurcell/plink/data.shtml">PLINK format</a> FAM and BIM files. Details on the format and contents of the Control and data files can be found on the <a href="https://openmendel.github.io/MendelBase.jl">MendelBase</a> documentation page. There are example data files in the GWAS <a href="https://github.com/OpenMendel/MendelGWAS.jl/tree/master/docs">docs</a> folder.</p>
 
 <h3>
 <a id="running-the-analysis" class="anchor" href="#running-the-analysis" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Running the Analysis</h3>
