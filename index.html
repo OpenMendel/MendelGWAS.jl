@@ -101,7 +101,7 @@ regression_formula = Trait ~ Sex
 <a id="keywords" class="anchor" href="#keywords" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Keywords<a id="keywords-table"></a>
 </h3>
 
-<p>This is a list of OpenMendel keywords specific to GWAS. A list of OpenMendel keywords common to most analysis package can be found <a href="https://openmendel.github.io/MendelBase.jl/#keywords-table">here</a>. The names of keywords are <em>not</em> case sensitive. (The keyword <em>values</em> may be case sensitive.)</p>
+<p>This is a list of OpenMendel keywords relevant to GWAS. A list of OpenMendel keywords common to most analysis package can be found <a href="https://openmendel.github.io/MendelBase.jl/#keywords-table">here</a>. The names of keywords are <em>not</em> case sensitive. (The keyword <em>values</em> may be case sensitive.)</p>
 
 <table>
 <thead>
@@ -113,6 +113,12 @@ regression_formula = Trait ~ Sex
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>affected_designator</td>
+<td>affected</td>
+<td></td>
+<td>under logistic regression, the trait label assigned to cases</td>
+</tr>
 <tr>
 <td>distribution</td>
 <td></td>
@@ -153,12 +159,14 @@ regression_formula = Trait ~ Sex
 <td>regression_formula</td>
 <td></td>
 <td></td>
-<td>Defines the regression model to analyze under the null hypothesis. see below for a description of the syntax to use</td>
+<td>Defines the regression model to analyze under the null hypothesis. See below for a description of the syntax to use</td>
 </tr>
 </tbody>
 </table>
 
 <p>The value for the keyword regression_formula takes the following form: the trait variable is separated from the predictors by " ~ ". For example, <code>regression_formula = Case_Control ~ Sex + BMI</code> means the trait labeled Case_Control will be modeled as a grand mean (intercept term) along with the covariates of Sex and BMI. Case_Control and BMI must be field names used in the pedigree file. (If you use a PLINK style FAM file, which does not use a header row, then the trait value should be referred to as "Trait".) Interactions between predictors are represented in the regression_formula using an "&amp;", for example, <code>Case_Control ~ Sex + BMI + Sex&amp;BMI</code> would add the interaction term to the previous main effects. (A product term, for example, Sex*BMI, is a short cut for main effects plus their interaction.) If the right hand side (after the " ~ ") is blank, then the model uses only the grand mean. Do not include a term for the SNPs as that is added automatically for each alternative model.</p>
+
+<p>Under logistic regression, the cases are those individuals whose value at the trait field is the same as the label assigned to the keyword affected_designator. The trait field is the field listed on the left hand side (before the " ~ ") in the regression_formula. The controls are those individuals with non-missing values at the trait that are not cases. Of course individuals with missing values at the trait are neither cases nor controls. </p>
 
 <h3>
 <a id="data-files" class="anchor" href="#data-files" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Data Files</h3>
