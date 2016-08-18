@@ -1,6 +1,6 @@
 # MendelGWAS
 
-This [Julia](http://julialang.org/) package performs standard Genome-wide Association Studies. MendelGWAS is one component of the umbrella [OpenMendel](https://openmendel.github.io) project.
+This [Julia](http://julialang.org/) package performs standard Genome-Wide Association Studies. MendelGWAS is one component of the umbrella [OpenMendel](https://openmendel.github.io) project.
 
 [![](https://img.shields.io/badge/docs-current-blue.svg)](https://OpenMendel.github.io/MendelGWAS.jl)
 
