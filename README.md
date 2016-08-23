@@ -10,7 +10,7 @@ This [Julia](http://julialang.org/) package performs standard Genome-Wide Associ
 
 Within Julia, use the package manager to install MendelGWAS:
 
-    Pkg.clone("git@github.com:OpenMendel/MendelGWAS.jl.git")
+    Pkg.clone("https://github.com/OpenMendel/MendelGWAS.jl.git")
 
 This package supports Julia v0.4.
 
