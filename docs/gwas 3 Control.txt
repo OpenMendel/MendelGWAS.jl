@@ -1,0 +1,12 @@
+#
+# Input and Output files.
+#
+plink_input_basename = gwas 1 data
+output_file = gwas 3 Output.txt
+manhattan_plot_file = gwas 3 Manhattan Plot Output.png
+#
+# Analysis parameters for GWAS option.
+#
+regression = linear
+regression_formula = Trait ~ Sex
+num_pcs = 3

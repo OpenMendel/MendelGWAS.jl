@@ -54,6 +54,7 @@ function GWAS(control_file = ""; args...)
   keyword["manhattan_plot_file"] = ""
   keyword["regression"] = ""   # Linear, Logistic, or Poisson
   keyword["regression_formula"] = ""
+  keyword["num_pcs"] = 0 # OpenMendel Stanford course new keyword
   #
   # Process the run-time user-specified keywords that will control the analysis.
   # This will also initialize the random number generator.
@@ -75,6 +76,16 @@ function GWAS(control_file = ""; args...)
   (pedigree, person, nuclear_family, locus, snpdata,
     locus_frame, phenotype_frame, pedigree_frame, snp_definition_frame) =
     read_external_data_files(keyword)
+
+  # Edits from Stanford workshop
+  # goal: compute extra PCs if user wants them
+  # if num_pcs > 0 then call PCA routine from SnpArrays
+  # then add those PCs to pedigree_frame, reallocate pedigree_frame
+  # each PC will be named "PC" + its number, e.g. "PC1", "PC2", etc.
+  npcs = keyword["num_pcs"]
+  npcs > 0 && add_pcs!(pedigree_frame, keyword, snpdata)
+
+
   #
   # Execute the specified analysis.
   #
@@ -395,6 +406,29 @@ function gwas_option(person::Person, snpdata::SnpData,
   close(io)
   return execution_error = false
 end # function gwas_option
+
+# function to add principal component vectors into a pedigree frame
+# call this if the user asks for a nonzero number of PCs
+# the PCs are calculated using the compressed SNP matrix
+function add_pcs!(pedigree_frame, keyword, snpdata)
+  npcs = keyword["num_pcs"]
+  regform = copy(keyword["regression_formula"])
+
+  # compute PCA from SNP data
+  pcscore, pcloading, pcvariance = pca(snpdata.snpmatrix, npcs)
+
+  # iteratively grow the data frame containing the covariates
+  # at each iteration we add 1 PC
+  # nota bene: this process is *slow* for large numbers of PCs!
+  for i = 1:npcs
+      pedigree_frame[Symbol("PC$i")] = zscore(pcscore[:,i])
+      regform = regform * " + PC$i"
+  end
+
+  # do not forget to save expanded regression formula to keyword Dict
+  keyword["regression_formula"] = copy(regform)
+  return nothing
+end
 
 end # module MendelGWAS
 
