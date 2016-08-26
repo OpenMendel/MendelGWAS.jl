@@ -252,7 +252,7 @@ function gwas_option(person::Person, snpdata::SnpData,
       X[:, j] = mm.m[complete, j]
     end
     y = zeros(cases)
-    y[1:end] = model.df[complete, 1]
+    y[1:end] = model.df[complete, lhs]
     #
     # Estimate parameters under the base model. Output results.
     #
