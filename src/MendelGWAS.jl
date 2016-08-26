@@ -233,6 +233,9 @@ function gwas_option(person::Person, snpdata::SnpData,
   #
   model.df[:EntryOrder] = pedigree_frame[:EntryOrder]
   sort!(model.df, cols = [:EntryOrder])
+  names_list = names(model.df)
+  deleteat!(names_list, findin(names_list, [:EntryOrder]))
+  model.df = model.df[:, names_list]
   #
   # First consider the base model with no SNPs included.
   # If using one of the standard regression models,
@@ -261,12 +264,15 @@ function gwas_option(person::Person, snpdata::SnpData,
     println(io, "Summary for Base Model with ", fm)
     println(io, "Regression Model: ", regression_type)
     println(io, "Link Function: ", "canonical")
-    name_list = names(model.df)
-    model_names = size(name_list,1)
+    names_list = names(model.df)
+    model_names = size(names_list,1)
+    outcome_index = findin(names_list, [lhs])[1]
     println(io, "Base Components Effect Estimates: ")
-    println(io, "   (Intercept) : ", signif(base_estimate[1], 6))
-    for j = 2:model_names-1
-      println(io, "   ", name_list[j], " : ", signif(base_estimate[j], 6))
+    println(io, "   (Intercept) : ", signif(base_estimate[outcome_index], 6))
+    for j = 1:model_names
+      if j != outcome_index
+        println(io, "   ", names_list[j], " : ", signif(base_estimate[j], 6))
+      end
     end
     println(io, "Base Loglikelihood: ", signif(base_loglikelihood, 8))
     println(io, " ")
