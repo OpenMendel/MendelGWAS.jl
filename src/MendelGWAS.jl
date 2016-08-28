@@ -16,8 +16,9 @@ using SnpArrays
 using DataFrames                        # From package DataFrames.
 using Distributions                     # From package Distributions.
 using GLM                               # From package GLM.
-using PyPlot                            # From package PyPlot.
 using StatsBase                         # From package StatsBase.
+
+import Plots
 
 export GWAS
 
@@ -316,7 +317,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     # using internal score test code. If the score test p-value
     # is below the specified threshold, carryout a likelihood ratio test.
     #
-    if fast_method 
+    if fast_method
       X[:, end] = dosage[complete]
       estimate = [base_estimate; 0.0]
       score_test = glm_score_test(X, y, estimate, regression_type)
@@ -330,7 +331,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     # For other distributions analyze the alternative model
     # using the GLM package.
     #
-    else 
+    else
       model.df[:SNP] = dosage
       snp_model = fit(GeneralizedLinearModel, fm, model.df,
         distribution_family, link)
@@ -381,26 +382,38 @@ function gwas_option(person::Person, snpdata::SnpData,
   plot_file = keyword["manhattan_plot_file"]
   if plot_file != ""
     if !contains(plot_file, ".png"); string(plot_file, ".png"); end
-    manhattan_frame = DataFrame()
-    manhattan_frame[:NegativeLogPvalue] = -log10(pvalue)
-    manhattan_frame[:Basepairs] = snpdata.basepairs
-    manhattan_frame[:Chromosome] = snpdata.chromosome
-    sort!(manhattan_frame::DataFrame, cols = [:Chromosome, :Basepairs])
-    #
-    # Use the PyPlot package to create a .png Manhattan plot of the p-values.
-    #
-    x = collect(1:snps)
-    y = manhattan_frame[:NegativeLogPvalue]
-    plot(x, y, ".")
-    title("Manhattan Plot of Negative Log P-values")
-    xlabel("SNP")
-    ylabel("-log10(p-value)")
-    plot_format = split(plot_file, ".")[2]
-    savefig(plot_file, format = plot_format)
+    # generate dataframe for plotting
+    df = DataFrame(
+        NegativeLogPvalue = -log10(pvalue),
+        # Basepairs = snpdata.basepairs,
+        Chromosome = snpdata.chromosome,
+        X = 1:length(pvalue)
+    )
+    # Get tick marks
+    xticks = by(df, :Chromosome, df -> mean(df[:X]))
+    # initialize plot
+    plt = Plots.scatter(
+        df[:NegativeLogPvalue], xlabel = "Chromosome", ylabel = "-log10(p-value)",
+        group = df[:Chromosome], markersize = 3, markerstrokewidth = 0,
+        legend = false, palette = :viridis,
+        xticks = (sort(xticks[:x1].data)[1:2:end], 1:2:size(xticks, 1))
+    )
+    # add horizontal line at 1e-8
+    Plots.abline!(plt, 0, 8, color = :black)
+    # annotate points with log10 p-values < 1e-8
+    sigvals = df[df[:NegativeLogPvalue] .> 8, :]
+    for i in 1:size(sigvals, 1)
+        chr = sigvals[:Chromosome][i]
+        x = sigvals[:X][i]
+        pval = sigvals[:NegativeLogPvalue][i]
+        Plots.annotate!(plt, [(x + 250, pval, Plots.text("$chr", 10))])
+    end
+
+    Plots.savefig(plt, plot_file)
+    display(plt)
   end
   close(io)
   return execution_error = false
 end # function gwas_option
 
 end # module MendelGWAS
-
