@@ -393,21 +393,13 @@ function gwas_option(person::Person, snpdata::SnpData,
     xticks = by(df, :Chromosome, df -> mean(df[:X]))
     # initialize plot
     plt = Plots.scatter(
-        df[:NegativeLogPvalue], xlabel = "Chromosome", ylabel = "-log10(p-value)",
+        df[:NegativeLogPvalue], xlabel = "Chromosome", ylabel = "\$log_{10}(p-value)\$",
         group = df[:Chromosome], markersize = 3, markerstrokewidth = 0,
         legend = false, palette = :viridis,
         xticks = (sort(xticks[:x1].data)[1:2:end], 1:2:size(xticks, 1))
     )
-    # add horizontal line at 1e-8
-    Plots.abline!(plt, 0, 8, color = :black)
-    # annotate points with log10 p-values < 1e-8
-    sigvals = df[df[:NegativeLogPvalue] .> 8, :]
-    for i in 1:size(sigvals, 1)
-        chr = sigvals[:Chromosome][i]
-        x = sigvals[:X][i]
-        pval = sigvals[:NegativeLogPvalue][i]
-        Plots.annotate!(plt, [(x + 250, pval, Plots.text("$chr", 10))])
-    end
+    # add horizontal line for Bonferonni Correction
+    Plots.abline!(plt, 0, -log10(.05 / size(df, 1)), color = :black, line = :dash)
 
     Plots.savefig(plt, plot_file)
     display(plt)
