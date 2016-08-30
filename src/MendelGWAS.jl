@@ -80,7 +80,7 @@ function GWAS(control_file = ""; args...)
   # Execute the specified analysis.
   #
   println(" \nAnalyzing the data.\n")
-  execution_error = gwas_option(person, snpdata, pedigree_frame, keyword)
+  execution_error, plt = gwas_option(person, snpdata, pedigree_frame, keyword)
   if execution_error
     println(" \n \nERROR: Mendel terminated prematurely!\n")
   else
@@ -92,7 +92,7 @@ function GWAS(control_file = ""; args...)
   #
   close(keyword["output_unit"])
   cd(initial_directory)
-  return nothing
+  return plt
 end # function GWAS
 
 """
@@ -407,7 +407,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     display(plt)
   end
   close(io)
-  return execution_error = false
+  return false, plt
 end # function gwas_option
 
 end # module MendelGWAS
