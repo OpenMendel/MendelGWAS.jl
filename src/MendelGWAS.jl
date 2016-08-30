@@ -389,18 +389,20 @@ function gwas_option(person::Person, snpdata::SnpData,
         Chromosome = snpdata.chromosome,
         X = 1:length(pvalue)
     )
+    df[:TruncNegativeLogPvalue] = map(x -> min(20, x), df[:NegativeLogPvalue])
     # Get tick marks
     xticks = by(df, :Chromosome, df -> mean(df[:X]))
     # initialize plot
     plt = Plots.scatter(
-        df[:NegativeLogPvalue], xlabel = "Chromosome", ylabel = "\$log_{10}(p-value)\$",
-        group = df[:Chromosome], markersize = 3, markerstrokewidth = 0,
-        legend = false, palette = :viridis,
-        xticks = (sort(xticks[:x1].data)[1:2:end], 1:2:size(xticks, 1))
+        df[:TruncNegativeLogPvalue], xlabel = "Chromosome", ylabel = "\$log_{10}(p-value)\$",
+        group = df[:Chromosome], markersize = 4, markerstrokewidth = 0,
+        legend = false, palette = :viridis, ylim = (0, 20),
+        xticks = (sort(xticks[:x1].data)[1:2:end], 1:2:size(xticks, 1)),
+        title = "Negative Log P-values (Truncated at 20)"
     )
     # add horizontal line for Bonferonni Correction
     Plots.abline!(plt, 0, -log10(.05 / size(df, 1)), color = :black, line = :dash)
-
+    # save and display
     Plots.savefig(plt, plot_file)
     display(plt)
   end
