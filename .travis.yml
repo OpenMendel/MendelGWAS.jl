@@ -7,7 +7,15 @@ julia:
   - release
   - nightly
 notifications:
-  email: false
+  email:
+    on_success: change
+    on_failure: always 
+  recipients:
+    - esobel@ucla.edu
+    
+install:
+  - julia -e 'Pkg.clone("https://github.com/OpenMendel/MendelBase.jl.git")
+  
 # uncomment the following lines to override the default test script
 #script:
 #  - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
