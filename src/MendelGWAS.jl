@@ -314,7 +314,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     #
     # For the three basic regression types, analyze the alternative model
     # using internal score test code. If the score test p-value
-    # is below the specified threshold, carryout a likelihood ratio test.
+    # is below the specified threshold, carry out a likelihood ratio test.
     #
     if fast_method 
       X[:, end] = dosage[complete]
