@@ -176,6 +176,14 @@ function gwas_option(person::Person, snpdata::SnpData,
       "the keyword regression_formula appears blank.\n" *
       "This should be the name of the trait field in the Pedigree file.\n \n"))
   end
+  if search(side[1], [' ', '	', ',', ';']) > 0
+    lhs_string = side[1]
+    throw(ArgumentError(
+      "The left hand side ($lhs_string) of the formula specified in\n" *
+      "the keyword regression_formula appears to have multiple entries.\n" *
+      "The left hand side should contain only the name of the trait field\n" *
+      "in the Pedigree file.\n \n"))
+  end
   if side[2] == ""; side[2] = "1"; end
   lhs = parse(side[1])
   rhs = parse(side[2])
