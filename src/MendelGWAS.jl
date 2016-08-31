@@ -194,16 +194,16 @@ function gwas_option(person::Person, snpdata::SnpData,
   # create a new field of type Float64 that will replace :sex.
   #
   if searchindex(string(rhs), "Sex") > 0 && in(:Sex, names(model.df))
-    model.df[:NewSex] = ones(person.people)
+    model.df[:NumericSex] = ones(person.people)
     for i = 1:person.people
       s = model.df[i, :Sex]
       if !isa(parse(string(s), raise=false), Number); s = lowercase(s); end
-      if !(s in keyword["male"]); model.df[i, :NewSex] = -1.0; end
+      if !(s in keyword["male"]); model.df[i, :NumericSex] = -1.0; end
     end
     names_list = names(model.df)
     deleteat!(names_list, findin(names_list, [:Sex]))
     model.df = model.df[:, names_list]
-    rename!(model.df, :NewSex, :Sex)
+    rename!(model.df, :NumericSex, :Sex)
   end
   #
   # For Logistic regression make sure the cases are 1.0,
@@ -213,19 +213,19 @@ function gwas_option(person::Person, snpdata::SnpData,
   #
   case_label = keyword["affected_designator"]
   if regression_type == "logistic" && case_label != ""
-    model.df[:NewTrait] = zeros(person.people)
+    model.df[:NumericTrait] = zeros(person.people)
     for i = 1:person.people
       s = string(model.df[i, lhs])
       if s == ""
-        model.df[i, :NewTrait] = NaN
+        model.df[i, :NumericTrait] = NaN
       elseif s == case_label
-        model.df[i, :NewTrait] = 1.0
+        model.df[i, :NumericTrait] = 1.0
       end
     end
     names_list = names(model.df)
     deleteat!(names_list, findin(names_list, [lhs]))
     model.df = model.df[:, names_list]
-    rename!(model.df, :NewTrait, lhs)
+    rename!(model.df, :NumericTrait, lhs)
   end
   #
   # To ensure that the trait and SNPs occur in the same order, sort the
