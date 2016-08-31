@@ -14,6 +14,7 @@ notifications:
     - esobel@ucla.edu
     
 install:
+  - julia -e 'ENV["PYTHON"]=""; Pkg.build("PyCall")'
   - julia -e 'Pkg.clone("https://github.com/OpenMendel/SnpArrays.jl.git")'
   - julia -e 'Pkg.clone("https://github.com/OpenMendel/Search.jl.git")'
   - julia -e 'Pkg.clone("https://github.com/OpenMendel/MendelBase.jl.git")'
