@@ -100,6 +100,8 @@ This function performs GWAS on a set of traits.
 function gwas_option(person::Person, snpdata::SnpData,
   pedigree_frame::DataFrame, keyword::Dict{ASCIIString, Any})
 
+  const TAB_CHAR :: Char = Char(9)
+
   people = person.people
   snps = snpdata.snps
   io = keyword["output_unit"]
@@ -137,7 +139,7 @@ function gwas_option(person::Person, snpdata::SnpData,
       "Set the keyword regression to either:\n" *
       "  linear (for usual quantitative traits),\n" *
       "  logistic (for usual qualitative traits),\n" *
-      "  poisson, or blank (for unusual analyses).\n" *
+      "  Poisson, or blank (for unusual analyses).\n" *
       "If keyword regression is not assigned, then the keywords\n" *
       "'distribution' and 'link' must be assigned names of functions.\n \n"))
   else
@@ -150,7 +152,7 @@ function gwas_option(person::Person, snpdata::SnpData,
      regression_type != "logistic" && regression_type != "poisson"
     throw(ArgumentError(
      "The keyword regression (currently: $regression_type) must be assigned\n" *
-     "the value 'linear', 'logistic', 'poisson', or blank.\n \n"))
+     "the value 'linear', 'logistic', 'Poisson', or blank.\n \n"))
   end
   #
   # Retrieve the regression formula and create a model frame.
@@ -163,7 +165,7 @@ function gwas_option(person::Person, snpdata::SnpData,
   end
   if !contains(regression_formula, "~")
     throw(ArgumentError(
-      "The value of the keyword regression_formula ($regression_formula)\n" *
+      "The value of the keyword regression_formula ('$regression_formula')\n" *
       "does not contain the required '~' that should separate\n" *
       "the trait and the predictors.\n \n"))
   end
@@ -176,10 +178,10 @@ function gwas_option(person::Person, snpdata::SnpData,
       "the keyword regression_formula appears blank.\n" *
       "This should be the name of the trait field in the Pedigree file.\n \n"))
   end
-  if search(side[1], [' ', '	', ',', ';']) > 0
+  if search(side[1], [' ', TAB_CHAR, ',', ';', '+', '*', '&']) > 0
     lhs_string = side[1]
     throw(ArgumentError(
-      "The left hand side ($lhs_string) of the formula specified in\n" *
+      "The left hand side ('$lhs_string') of the formula specified in\n" *
       "the keyword regression_formula appears to have multiple entries.\n" *
       "The left hand side should contain only the name of the trait field\n" *
       "in the Pedigree file.\n \n"))
@@ -191,7 +193,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     lhs_string = string(lhs)
     throw(ArgumentError(
       "The field named on the left hand side of the formula specified in\n" *
-      "the keyword regression_formula (currently: $lhs_string)\n" *
+      "the keyword regression_formula (currently: '$lhs_string')\n" *
       "is not in the Pedigree data file.\n \n"))
   end
   fm = Formula(lhs, rhs)
