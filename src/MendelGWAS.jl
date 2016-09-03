@@ -16,8 +16,9 @@ using SnpArrays
 using DataFrames                        # From package DataFrames.
 using Distributions                     # From package Distributions.
 using GLM                               # From package GLM.
-using PyPlot                            # From package PyPlot.
 using StatsBase                         # From package StatsBase.
+
+import Plots
 
 export GWAS
 
@@ -79,7 +80,7 @@ function GWAS(control_file = ""; args...)
   # Execute the specified analysis.
   #
   println(" \nAnalyzing the data.\n")
-  execution_error = gwas_option(person, snpdata, pedigree_frame, keyword)
+  execution_error, plt = gwas_option(person, snpdata, pedigree_frame, keyword)
   if execution_error
     println(" \n \nERROR: Mendel terminated prematurely!\n")
   else
@@ -91,7 +92,7 @@ function GWAS(control_file = ""; args...)
   #
   close(keyword["output_unit"])
   cd(initial_directory)
-  return nothing
+  return plt
 end # function GWAS
 
 """
@@ -326,7 +327,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     # using internal score test code. If the score test p-value
     # is below the specified threshold, carry out a likelihood ratio test.
     #
-    if fast_method 
+    if fast_method
       X[:, end] = dosage[complete]
       estimate = [base_estimate; 0.0]
       score_test = glm_score_test(X, y, estimate, regression_type)
@@ -340,7 +341,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     # For other distributions analyze the alternative model
     # using the GLM package.
     #
-    else 
+    else
       model.df[:SNP] = dosage
       snp_model = fit(GeneralizedLinearModel, fm, model.df,
         distribution_family, link)
@@ -391,26 +392,32 @@ function gwas_option(person::Person, snpdata::SnpData,
   plot_file = keyword["manhattan_plot_file"]
   if plot_file != ""
     if !contains(plot_file, ".png"); string(plot_file, ".png"); end
-    manhattan_frame = DataFrame()
-    manhattan_frame[:NegativeLogPvalue] = -log10(pvalue)
-    manhattan_frame[:Basepairs] = snpdata.basepairs
-    manhattan_frame[:Chromosome] = snpdata.chromosome
-    sort!(manhattan_frame::DataFrame, cols = [:Chromosome, :Basepairs])
-    #
-    # Use the PyPlot package to create a .png Manhattan plot of the p-values.
-    #
-    x = collect(1:snps)
-    y = manhattan_frame[:NegativeLogPvalue]
-    plot(x, y, ".")
-    title("Manhattan Plot of Negative Log P-values")
-    xlabel("SNP")
-    ylabel("-log10(p-value)")
-    plot_format = split(plot_file, ".")[2]
-    savefig(plot_file, format = plot_format)
+    # generate dataframe for plotting
+    df = DataFrame(
+        NegativeLogPvalue = -log10(pvalue),
+        # Basepairs = snpdata.basepairs,
+        Chromosome = snpdata.chromosome,
+        X = 1:length(pvalue)
+    )
+    df[:TruncNegativeLogPvalue] = map(x -> min(20, x), df[:NegativeLogPvalue])
+    # Get tick marks
+    xticks = by(df, :Chromosome, df -> mean(df[:X]))
+    # initialize plot
+    plt = Plots.scatter(
+        df[:TruncNegativeLogPvalue], xlabel = "Chromosome", ylabel = "\$log_{10}(p-value)\$",
+        group = df[:Chromosome], markersize = 4, markerstrokewidth = 0,
+        legend = false, palette = :viridis, ylim = (0, 20),
+        xticks = (sort(xticks[:x1].data)[1:2:end], 1:2:size(xticks, 1)),
+        title = "Negative Log P-values (Truncated at 20)"
+    )
+    # add horizontal line for Bonferonni Correction
+    Plots.abline!(plt, 0, -log10(.05 / size(df, 1)), color = :black, line = :dash)
+    # save and display
+    Plots.savefig(plt, plot_file)
+    display(plt)
   end
   close(io)
-  return execution_error = false
+  return false, plt
 end # function gwas_option
 
 end # module MendelGWAS
-
