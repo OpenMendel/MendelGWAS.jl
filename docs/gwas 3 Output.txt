@@ -1,0 +1,48 @@
+ 
+Summary for Base Model with Formula: Trait ~ Sex + PC1 + PC2 + PC3
+Regression Model: linear
+Link Function: canonical
+Base Components Effect Estimates: 
+   (Intercept) : 0.142675
+   PC1 : 0.0142515
+   PC2 : -0.0164012
+   PC3 : 0.037193
+   Sex : -0.0229578
+Base Loglikelihood: -1256.1014
+ 
+ 
+
+Summary for SNP rs1935681
+ on chromosome 6 at basepair 112651205
+SNP p-value: 1.23078e-11
+Minor Allele Frequency: 0.2523
+Hardy-Weinberg p-value: 0.3666
+SNP Effect Estimate: -0.249
+SNP Effect Loglikelihood: -1233.1405
+ 
+
+Summary for SNP rs2256412
+ on chromosome 12 at basepair 41913108
+SNP p-value: 6.753899999999999e-35
+Minor Allele Frequency: 0.4741
+Hardy-Weinberg p-value: 0.1844
+SNP Effect Estimate: -0.3876
+SNP Effect Loglikelihood: -1180.1648
+ 
+ 
+ 
+        P-value   Number of Passing
+FDR    Threshold     Predictors 
+
+0.01    0.00000           2
+0.05    0.00002           5
+0.10    0.00008          10
+0.20    0.00031          16
+0.30    0.00086          30
+0.40    0.00188          48
+0.50    0.00509         102
+0.60    0.02054         345
+0.70    0.03975         568
+0.80    0.08991        1128
+0.90    0.28134        3127
+ 
