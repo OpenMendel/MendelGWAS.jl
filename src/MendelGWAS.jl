@@ -267,9 +267,12 @@ function gwas_option(person::Person, snpdata::SnpData,
     y = zeros(cases)
     y[1:end] = model.df[complete, lhs]
     #
-    # Estimate parameters under the base model.
+    # Estimate parameters under the base model. Record the vector of residuals.
     #
     (base_estimate, base_loglikelihood) = regress(X, y, regression_type)
+    if regression_type == "linear"
+      residual_base = y - (X * base_estimate)
+    end
     #
     # Output the results of the base model.
     #
@@ -339,6 +342,12 @@ function gwas_option(person::Person, snpdata::SnpData,
         lrt = 2.0 * (loglikelihood - base_loglikelihood)
         pvalue[snp] = ccdf(Chisq(1), lrt)
       end
+      #
+      # Record the vector of residuals under this alternative model.
+      #
+      if regression_type == "linear"
+        residual_snp = y - (X * estimate)
+      end
     #
     # For other distributions analyze the alternative model
     # using the GLM package.
@@ -371,6 +380,15 @@ function gwas_option(person::Person, snpdata::SnpData,
       else
         println(io, "")
         println(io, snp_model)
+      end
+      #
+      # For linear models, output the proportion of the base model's variance
+      # that is explained by including this SNP in the model.
+      #
+      if regression_type == "linear"
+        variance_explained = 1 - (norm(residual_snp)^2 / norm(residual_base)^2)
+        println(io, "Proportion of base model variance explained: ",
+          round(variance_explained, 4))
       end
     end
   end
