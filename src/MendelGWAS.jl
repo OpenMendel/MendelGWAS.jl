@@ -48,12 +48,13 @@ function GWAS(control_file = ""; args...)
   # keyword["some_keyword_name"] = default_value
   #
   keyword["distribution"] = "" # Binomial(), Gamma(), Normal(), Poisson(), etc.
-  keyword["link"] = "" # LogitLink(), IdentityLink(), LogLink(), etc.
+  keyword["link"] = ""         # LogitLink(), IdentityLink(), LogLink(), etc.
   keyword["lrt_threshold"] = 5e-8
   keyword["maf_threshold"] = 0.01
   keyword["manhattan_plot_file"] = ""
   keyword["regression"] = ""   # Linear, Logistic, or Poisson
   keyword["regression_formula"] = ""
+  keyword["pcs"] = 0      # Number of Principal Components to include in model.
   #
   # Process the run-time user-specified keywords that will control the analysis.
   # This will also initialize the random number generator.
@@ -75,6 +76,16 @@ function GWAS(control_file = ""; args...)
   (pedigree, person, nuclear_family, locus, snpdata,
     locus_frame, phenotype_frame, pedigree_frame, snp_definition_frame) =
     read_external_data_files(keyword)
+  #
+  # If principal components are requested to be included in the model,
+  # then call a function that will use the PCA routine in SnpArrays,
+  # and will add these PCs to the pedigree_frame. Once in the pedigree frame
+  # these PCs will be included in the regression procedure.
+  # Each PC will be named PCn where n is its number, e.g., "PC1".
+  #
+  if keyword["pcs"] > 0
+    add_pcs!(pedigree_frame, snpdata, keyword)
+  end
   #
   # Execute the specified analysis.
   #
@@ -332,7 +343,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     # using internal score test code. If the score test p-value
     # is below the specified threshold, carry out a likelihood ratio test.
     #
-    if fast_method 
+    if fast_method
       X[:, end] = dosage[complete]
       estimate = [base_estimate; 0.0]
       score_test = glm_score_test(X, y, estimate, regression_type)
@@ -352,7 +363,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     # For other distributions analyze the alternative model
     # using the GLM package.
     #
-    else 
+    else
       model.df[:SNP] = dosage
       snp_model = fit(GeneralizedLinearModel, fm, model.df,
         distribution_family, link)
@@ -433,5 +444,32 @@ function gwas_option(person::Person, snpdata::SnpData,
   return execution_error = false
 end # function gwas_option
 
-end # module MendelGWAS
+"""
+Add principal components into a pedigree frame and regression formula.
+The PCs are calculated via pca() from the SnpArrays module.
+"""
+function add_pcs!(pedigree_frame::DataFrame, snpdata::SnpData,
+  keyword::Dict{ASCIIString, Any})
 
+  pcs = keyword["pcs"]
+  regress_form = keyword["regression_formula"]
+  #
+  # Perform PCA on the SNP data.
+  #
+  pcscore, pcloading, pcvariance = pca(snpdata.snpmatrix, pcs)
+  #
+  # Include the new covariates in the pedigree dataframe.
+  # NB: this process is *slow* for a large number of PCs!
+  #
+  for i = 1:pcs
+    pedigree_frame[Symbol("PC$i")] = zscore(pcscore[:,i])
+    regress_form = regress_form * " + PC$i"
+  end
+  #
+  # Save the expanded regression formula to the keyword dictionary.
+  #
+  keyword["regression_formula"] = regress_form
+  return nothing
+end # function add_pcs!
+
+end # module MendelGWAS
