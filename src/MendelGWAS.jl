@@ -267,24 +267,27 @@ function gwas_option(person::Person, snpdata::SnpData,
     y = zeros(cases)
     y[1:end] = model.df[complete, lhs]
     #
-    # Estimate parameters under the base model. Output results.
+    # Estimate parameters under the base model.
     #
     (base_estimate, base_loglikelihood) = regress(X, y, regression_type)
+    #
+    # Output the results of the base model.
+    #
     println(io, " ")
     println(io, "Summary for Base Model with ", fm)
-    println(io, "Regression Model: ", regression_type)
-    println(io, "Link Function: ", "canonical")
+    println(io, "Regression model: ", regression_type)
+    println(io, "Link function: ", "canonical")
     names_list = names(model.df)
     model_names = size(names_list,1)
     outcome_index = findin(names_list, [lhs])[1]
-    println(io, "Base Components Effect Estimates: ")
+    println(io, "Base components' effect estimates: ")
     println(io, "   (Intercept) : ", signif(base_estimate[outcome_index], 6))
     for j = 1:model_names
       if j != outcome_index
         println(io, "   ", names_list[j], " : ", signif(base_estimate[j], 6))
       end
     end
-    println(io, "Base Loglikelihood: ", signif(base_loglikelihood, 8))
+    println(io, "Base model loglikelihood: ", signif(base_loglikelihood, 8))
     println(io, " ")
   else
     #
@@ -355,7 +358,7 @@ function gwas_option(person::Person, snpdata::SnpData,
       println(io, " on chromosome ", snpdata.chromosome[snp],
         " at basepair ", snpdata.basepairs[snp])
       println(io, "SNP p-value: ", signif(pvalue[snp], 6))
-      println(io, "Minor Allele Frequency: ", round(snpdata.maf[snp], 4))
+      println(io, "Minor allele frequency: ", round(snpdata.maf[snp], 4))
       if uppercase(snpdata.chromosome[snp]) == "X"
         hw = xlinked_hardy_weinberg_test(dosage, person.male)
       else
@@ -363,8 +366,8 @@ function gwas_option(person::Person, snpdata::SnpData,
       end
       println(io, "Hardy-Weinberg p-value: ", round(hw, 4))
       if fast_method
-        println(io, "SNP Effect Estimate: ", signif(estimate[end], 4))
-        println(io, "SNP Effect Loglikelihood: ", signif(loglikelihood, 8))
+        println(io, "SNP effect estimate: ", signif(estimate[end], 4))
+        println(io, "SNP model loglikelihood: ", signif(loglikelihood, 8))
       else
         println(io, "")
         println(io, snp_model)
