@@ -6,17 +6,17 @@ module MendelGWAS
 # Required OpenMendel packages and modules.
 #
 using MendelBase
-# using DataStructures                  # Now in MendelBase.
-# using GeneticUtilities                # Now in MendelBase.
-# using GeneralUtilities                # Now in MendelBase.
 using SnpArrays
 #
 # Required external modules.
 #
+using Compat
+import Compat: view
+
 using DataFrames                        # From package DataFrames.
 using Distributions                     # From package Distributions.
 using GLM                               # From package GLM.
-using PyPlot                            # From package PyPlot.
+using Plots                             # From package Plots.
 using StatsBase                         # From package StatsBase.
 
 export GWAS
@@ -41,7 +41,7 @@ function GWAS(control_file = ""; args...)
   # The user specifies the analysis to perform via a set of keywords.
   # Start the keywords at their default values.
   #
-  keyword = set_keyword_defaults!(Dict{ASCIIString, Any}())
+  keyword = set_keyword_defaults!(Dict{AbstractString, Any}())
   #
   # Keywords unique to this analysis should be first defined here
   # by setting their default values using the format:
@@ -109,7 +109,7 @@ end # function GWAS
 This function performs GWAS on a set of traits.
 """
 function gwas_option(person::Person, snpdata::SnpData,
-  pedigree_frame::DataFrame, keyword::Dict{ASCIIString, Any})
+  pedigree_frame::DataFrame, keyword::Dict{AbstractString, Any})
 
   const TAB_CHAR :: Char = Char(9)
 
@@ -337,7 +337,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     #
     # Copy the current SNP genotypes into a dosage vector.
     #
-    copy!(dosage, slice(snpdata.snpmatrix, :, snp); impute = false)
+    copy!(dosage, view(snpdata.snpmatrix, :, snp); impute = false)
     #
     # For the three basic regression types, analyze the alternative model
     # using internal score test code. If the score test p-value
@@ -418,27 +418,52 @@ function gwas_option(person::Person, snpdata::SnpData,
   #
   # If requested, output a Manhattan Plot in .png format.
   # First, create a new dataframe that will hold the SNP data to plot.
-  # Next, sort the data by chromosome and basepair location.
+  # [[Next, sort the data by chromosome and basepair location!]]
   #
   plot_file = keyword["manhattan_plot_file"]
-  if plot_file != ""
+  if plot_file != "" && VERSION ≥ v"0.5.0"
     if !contains(plot_file, ".png"); string(plot_file, ".png"); end
-    manhattan_frame = DataFrame()
-    manhattan_frame[:NegativeLogPvalue] = -log10(pvalue)
-    manhattan_frame[:Basepairs] = snpdata.basepairs
-    manhattan_frame[:Chromosome] = snpdata.chromosome
-    sort!(manhattan_frame::DataFrame, cols = [:Chromosome, :Basepairs])
     #
-    # Use the PyPlot package to create a .png Manhattan plot of the p-values.
+    # Generate a dataframe for plotting. [[There is no need to include basepairs??]]
     #
-    x = collect(1:snps)
-    y = manhattan_frame[:NegativeLogPvalue]
-    plot(x, y, ".")
-    title("Manhattan Plot of Negative Log P-values")
-    xlabel("SNP")
-    ylabel("-log10(p-value)")
-    plot_format = split(plot_file, ".")[2]
-    savefig(plot_file, format = plot_format)
+    plot_frame = DataFrame(
+      X = 1:length(pvalue),
+      NegativeLogPvalue = -log10(pvalue),
+      Chromosome = snpdata.chromosome)
+    #
+    # Choose a plotting backend for the Plots frontend to use.
+    #
+    pyplot()
+    #
+    # Create the scatter plot of the -log10(p-values) grouped by chromosome number.
+    # Set the size, shape, and color of the plotted elements.
+    #
+    plt = scatter(x = plot_frame[:X], y = plot_frame[:NegativeLogPvalue],
+        group = plot_frame[:Chromosome],
+        markersize = 3, markerstrokewidth = 0, color_palette = :rainbow)
+    #
+    # Add x-axis tick marks. Also label the x-axis.
+    #
+    xticks = by(plot_frame, :Chromosome, plot_frame -> mean(plot_frame[:X]))
+    xaxis!(plt, xticks = (sort(xticks[:x1].data)[1:2:end], 1:2:size(xticks, 1)),
+        xlabel = "Chromosome")
+    #
+    # Add the y-axis information.
+    #
+    yaxis!(plt, ylabel = "-log\$_{10}\$(p-value)")
+    #
+    # Add an overall title and remove the legend.
+    #
+    plot!(plt, title = "Manhattan Plot", legend = false)
+    #
+    # Add a dashed horizontal line that indicates the Bonferonni threshold.
+    #
+    Plots.abline!(plt, 0, -log10(.05 / length(pvalue)), color = :black, line = :dash)
+    #
+    # Save and display the plot.
+    #
+    savefig(plt, plot_file)
+    display(plt)
   end
   close(io)
   return execution_error = false
@@ -449,7 +474,7 @@ Add principal components into a pedigree frame and regression formula.
 The PCs are calculated via pca() from the SnpArrays module.
 """
 function add_pcs!(pedigree_frame::DataFrame, snpdata::SnpData,
-  keyword::Dict{ASCIIString, Any})
+  keyword::Dict{AbstractString, Any})
 
   pcs = keyword["pcs"]
   regress_form = keyword["regression_formula"]
