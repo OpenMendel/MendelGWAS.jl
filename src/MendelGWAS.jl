@@ -443,23 +443,30 @@ function gwas_option(person::Person, snpdata::SnpData,
         group = plot_frame[:Chromosome],
         markersize = 3, markerstrokewidth = 0, color_palette = :rainbow)
     #
-    # Add x-axis tick marks. Also label the x-axis.
+    # Specify the x-axis tick marks to be at the center of the chromosome.
+    # Use x-axis tick marks only in the odd numbered chromosomes.
+    # Also, label the x-axis.
     #
     xticks = by(plot_frame, :Chromosome, plot_frame -> mean(plot_frame[:X]))
-    xaxis!(plt, xticks = (sort(xticks[:x1].data)[1:2:end], 1:2:size(xticks, 1)),
-        xlabel = "Chromosome")
+    xaxis!(plt, xticks = (sort(xticks[:x1].data)[1:2:end], 1:2:size(xticks, 1)))
+    xaxis!(plt, xlabel = "Chromosome")
     #
     # Add the y-axis information.
     #
     yaxis!(plt, ylabel = "-log\$_{10}\$(p-value)")
     #
-    # Add an overall title and remove the legend.
+    # Use a grey grid and remove the legend.
     #
-    plot!(plt, title = "Manhattan Plot", legend = false)
+    plot!(plt, gridcolor = :lightgrey, legend = false)
+    #
+    # Add an overall title.
+    #
+    plot!(plt, title = "Manhattan Plot", window_title = "Manhattan Plot")
     #
     # Add a dashed horizontal line that indicates the Bonferonni threshold.
     #
-    Plots.abline!(plt, 0, -log10(.05 / length(pvalue)), color = :black, line = :dash)
+    Plots.abline!(plt, 0, -log10(.05 / length(pvalue)), color = :black,
+        line = :dash)
     #
     # Display the plot and then save the plot to a file.
     #
