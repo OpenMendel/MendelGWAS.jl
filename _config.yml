@@ -1,0 +1,8 @@
+title: MendelGWAS.jl
+description: This package performs standard Genome-Wide Association Studies.
+google_analytics: 
+show_downloads: true
+theme: jekyll-theme-slate
+
+gems:
+  - jekyll-mentions
