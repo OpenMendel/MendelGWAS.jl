@@ -5,19 +5,19 @@ Mendel GWAS is a component of the umbrella [OpenMendel](https://openmendel.githu
 Mendel GWAS analysis input data is unrelated individuals genotyped at a large number of autosomal or X-linked SNPs. Mendel GWAS uses the compressed SNP data files. 
 
 ### Installation
-*Note: Three OpenMendel packages - [SnpArrays](https://github.com/OpenMendel/SnpArrays.jl), [Search](https://github.com/OpenMendel/Search.jl), and [MendelBase](https://github.com/OpenMendel/MendelBase.jl) must be installed before any Mendel analysis packages will run.*
+*Note: The three OpenMendel packages (1) [SnpArrays](https://openmendel.github.io/SnpArrays.jl/latest/), (2) [Search](https://openmendel.github.io/Search.jl), and (3) [MendelBase](https://openmendel.github.io/MendelBase.jl) must be installed before any other OpenMendel package will run. It is easiest if these three packages are installed in the above order and before any other OpenMendel package.*
 
 Within Julia, use the package manager to install Mendel:
 
     Pkg.clone("https://github.com/OpenMendel/MendelGWAS.jl.git")
 
-This package supports Julia v0.4.
+This package supports Julia v0.4 and v0.5.
 
 ### Input Files
-The MendelGWAS analysis package uses the following input files. Example input files can be found in the [docs]( https://github.com/OpenMendel/MendelGWAS.jl/tree/master/docs) subfolder of the MendelGWAS project.
+The MendelGWAS analysis package uses the following input files. Example input files can be found in the [docs](https://github.com/OpenMendel/MendelGWAS.jl/tree/master/docs) subfolder of the MendelGWAS project.
 
 * [Control File](#control-file): Specifies the names of your data input and output files and any optional parameters (*keywords*) for the analysis. (For a list of common keywords, see [Keywords Table](https://openmendel.github.io/MendelBase.jl/#keywords-table)).
-* [Pedigree File]( https://openmendel.github.io/MendelBase.jl/#pedigree-file): Gives information about your individuals, such as name, parental information, and sex.
+* [Pedigree File](https://openmendel.github.io/MendelBase.jl/#pedigree-file): Gives information about your individuals, such as name, parental information, and sex.
 * [SNP Definition File](https://openmendel.github.io/MendelBase.jl/#snp-definition-file): Defines your SNPs with information such as SNP name, chromosome, position, and allele names.
 * [SNP Data File](https://openmendel.github.io/MendelBase.jl/#snp-data-file): Holds the genotypes for your data set and must be a standard binary PLINK BED file in SNP major format. If you have a SNP data file, you must also have a SNP definition file.
 
