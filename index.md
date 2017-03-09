@@ -21,7 +21,8 @@ The MendelGWAS analysis package uses the following input files. Example input fi
 * [SNP Definition File](https://openmendel.github.io/MendelBase.jl/#snp-definition-file): Defines your SNPs with information such as SNP name, chromosome, position, and allele names.
 * [SNP Data File](https://openmendel.github.io/MendelBase.jl/#snp-data-file): Holds the genotypes for your data set and must be a standard binary PLINK BED file in SNP major format. If you have a SNP data file, you must also have a SNP definition file.
 
-### Control file<a id="control-file"></a>
+<a id="control-file"></a>
+### Control file
 The Control file is a text file consisting of keywords and their assigned values. The format of the Control file is:
 
 	Keyword = Keyword_Value(s)
@@ -40,7 +41,7 @@ Below is an example of a simple Control file to run GWAS:
 	regression = linear
 	regression_formula = Trait ~ Sex
 
-In the example above, there are five keywords. The keyword *plink_input_basename* tells MendelGWAS that the input data files will comprise three [PLINK format](http://pngu.mgh.harvard.edu/~purcell/plink/data.shtml) data files: *gwas 1 data.fam*, *gwas 1 data.bim*, and *gwas 1 data.bed*. The next two keywords specify the output files: *gwas 1 Output.txt* the results file - and *gwas 1 Manhattan Plot Output.png* - a plot of the results. The last two keywords specify analysis parameters. The text after the " = " are the keyword values.
+In the example above, there are five keywords. The keyword *plink_input_basename* tells MendelGWAS that the input data files will comprise three [PLINK format](http://zzz.bwh.harvard.edu/plink) data files: *gwas 1 data.fam*, *gwas 1 data.bim*, and *gwas 1 data.bed*. The next two keywords specify the output files: *gwas 1 Output.txt* the results file - and *gwas 1 Manhattan Plot Output.png* - a plot of the results. The last two keywords specify analysis parameters. The text after the " = " are the keyword values.
 
 ### Keywords<a id="keywords-table"></a>
 This is a list of OpenMendel keywords relevant to GWAS. A list of OpenMendel keywords common to most analysis package can be found [here](https://openmendel.github.io/MendelBase.jl/#keywords-table). The names of keywords are *not* case sensitive. (The keyword *values* may be case sensitive.)
@@ -61,7 +62,7 @@ The value for the keyword regression_formula takes the following form: the trait
 Under logistic regression, the cases are those individuals whose value at the trait field is the same as the label assigned to the keyword affected_designator. The trait field is the field listed on the left hand side (before the " ~ ") in the regression_formula. The controls are those individuals with non-missing values at the trait that are not cases. Of course individuals with missing values at the trait are neither cases nor controls. 
 
 ### Data Files
-GWAS requires a [Control file](https://openmendel.github.io/MendelBase.jl/#control-file) and a [Pedigree file](https://openmendel.github.io/MendelBase.jl/#pedigree-file). Genotype data is provided in a [SNP data file]( https://openmendel.github.io/MendelBase.jl/#snp-data-file), with a [SNP Definition File]( https://openmendel.github.io/MendelBase.jl/#snp-definition-file) describing the SNPs. OpenMendel will also accept [PLINK format](http://pngu.mgh.harvard.edu/~purcell/plink/data.shtml) FAM and BIM files. Details on the format and contents of the Control and data files can be found on the [MendelBase](https://openmendel.github.io/MendelBase.jl) documentation page. There are example data files in the GWAS [docs]( https://github.com/OpenMendel/MendelGWAS.jl/tree/master/docs) folder.
+GWAS requires a [Control file](https://openmendel.github.io/MendelBase.jl/#control-file) and a [Pedigree file](https://openmendel.github.io/MendelBase.jl/#pedigree-file). Genotype data is provided in a [SNP data file]( https://openmendel.github.io/MendelBase.jl/#snp-data-file), with a [SNP Definition File]( https://openmendel.github.io/MendelBase.jl/#snp-definition-file) describing the SNPs. OpenMendel will also accept [PLINK format](http://zzz.bwh.harvard.edu/plink) FAM and BIM files. Details on the format and contents of the Control and data files can be found on the [MendelBase](https://openmendel.github.io/MendelBase.jl) documentation page. There are example data files in the GWAS [docs]( https://github.com/OpenMendel/MendelGWAS.jl/tree/master/docs) folder.
 
 ### Running the Analysis
 
