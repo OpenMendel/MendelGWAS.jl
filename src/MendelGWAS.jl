@@ -268,7 +268,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     # Copy the complete rows into a design matrix X and a response vector y.
     #
     mm = ModelMatrix(model) # Extract the model matrix with missing values.
-    complete = complete_cases(model.df)
+    complete = completecases(model.df)
     cases = sum(complete)
     predictors = size(mm.m, 2)
     X = zeros(cases, predictors)
@@ -377,7 +377,7 @@ function gwas_option(person::Person, snpdata::SnpData,
       println(io, "Summary for SNP ", snpdata.snpid[snp])
       println(io, " on chromosome ", snpdata.chromosome[snp],
         " at basepair ", snpdata.basepairs[snp])
-      println(io, "SNP p-value: ", signif(pvalue[snp], 6))
+      println(io, "SNP p-value: ", signif(pvalue[snp], 4))
       println(io, "Minor allele frequency: ", round(snpdata.maf[snp], 4))
       if uppercase(snpdata.chromosome[snp]) == "X"
         hw = xlinked_hardy_weinberg_test(dosage, person.male)
@@ -421,7 +421,8 @@ function gwas_option(person::Person, snpdata::SnpData,
   # [[Next, sort the data by chromosome and basepair location!]]
   #
   plot_file = keyword["manhattan_plot_file"]
-  if plot_file != "" && VERSION ≥ v"0.5.0"
+  if plot_file != "" && VERSION ≥ v"0.5.0" && VERSION < v"0.6.0"
+##  if plot_file != ""
     println(" \nCreating a Manhattan plot from the GWAS results.\n")
     if !contains(plot_file, ".png"); string(plot_file, ".png"); end
     #
@@ -429,7 +430,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     #
     plot_frame = DataFrame(
       X = 1:length(pvalue),
-      NegativeLogPvalue = -log10(pvalue),
+      NegativeLogPvalue = -log10.(pvalue),
       Chromosome = snpdata.chromosome)
     #
     # Choose a plotting backend for the Plots frontend to use.
