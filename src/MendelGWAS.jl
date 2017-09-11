@@ -121,7 +121,8 @@ function gwas_option(person::Person, snpdata::SnpData,
   #
   # Recognize the three basic GWAS regression models:
   # Linear, Logistic, and Poisson.
-  # For these three we will use fast internal regression code.
+  # For these three we will use fast internal regression code,
+  # unless an interaction term is detected.
   #
   regression_type = lowercase(keyword["regression"])
   distribution_family = keyword["distribution"]
@@ -209,6 +210,11 @@ function gwas_option(person::Person, snpdata::SnpData,
   end
   fm = Formula(lhs, rhs)
   model = ModelFrame(fm, pedigree_frame)
+  #
+  # If the regression formula includes an interaction term,
+  # do not use the fast internal regression code.
+  #
+  if search(string(rhs), ['*', '&']) > 0; fast_method = false; end
   #
   # Change sex designations to -1.0 (females) and +1.0 (males).
   # Since the field :sex may have type string,
