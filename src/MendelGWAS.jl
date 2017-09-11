@@ -277,15 +277,16 @@ function gwas_option(person::Person, snpdata::SnpData,
   #
   if fast_method
     #
-    # Copy the complete rows into a design matrix X and a response vector y.
+    # Create the model matrix, initially still with any missing values.
+    # Copy only the complete rows into design matrix X and response vector y.
     #
-    mm = ModelMatrix(model) # Extract the model matrix with missing values.
+    modelmatrx = ModelMatrix(model)
     complete = completecases(model.df)
     cases = sum(complete)
-    predictors = size(mm.m, 2)
+    predictors = size(modelmatrx.m, 2)
     X = zeros(cases, predictors)
     for j = 1:predictors
-      X[:, j] = mm.m[complete, j]
+      X[:, j] = modelmatrx.m[complete, j]
     end
     y = zeros(cases)
     y[1:end] = model.df[complete, lhs]
@@ -329,12 +330,8 @@ function gwas_option(person::Person, snpdata::SnpData,
   # Add a column to the design matrix to hold the SNP dosages.
   # Change the regression formula to include the SNP.
   #
-  X = [X zeros(cases)]
-  if side[2] == ""
-    rhs = parse("SNP")
-  else
-    rhs = parse(side[2] * " + " * "SNP")
-  end
+  if fast_method; X = [X zeros(cases)]; end
+  rhs = parse(side[2] * " + SNP")
   fm = Formula(lhs, rhs)
   #
   # Analyze the SNP predictors one by one.
@@ -347,9 +344,10 @@ function gwas_option(person::Person, snpdata::SnpData,
     #
     if snpdata.maf[snp] <= maf_threshold; continue; end
     #
-    # Copy the current SNP genotypes into a dosage vector.
+    # Copy the current SNP genotypes into a dosage vector,
+    # allowing missing genotypes to be simplistically imputed based on MAF.
     #
-    copy!(dosage, view(snpdata.snpmatrix, :, snp); impute = false)
+    copy!(dosage, view(snpdata.snpmatrix, :, snp); impute = true)
     #
     # For the three basic regression types, analyze the alternative model
     # using internal score test code. If the score test p-value
@@ -397,7 +395,7 @@ function gwas_option(person::Person, snpdata::SnpData,
         hw = hardy_weinberg_test(dosage)
       end
       println(io, "Hardy-Weinberg p-value: ", round(hw, 4))
-      if fast_method
+      if fast_method && pvalue[snp] < lrt_threshold
         println(io, "SNP effect estimate: ", signif(estimate[end], 4))
         println(io, "SNP model loglikelihood: ", signif(loglikelihood, 8))
       else
@@ -441,8 +439,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     # Generate a dataframe for plotting.
     # [[There is no need to include basepairs??]]
     #
-    plot_frame = DataFrame(
-      X = 1:length(pvalue),
+    plot_frame = DataFrame( SNPnumber = 1:snps,
       NegativeLogPvalue = -log10.(pvalue),
       Chromosome = snpdata.chromosome)
     #
@@ -453,15 +450,16 @@ function gwas_option(person::Person, snpdata::SnpData,
     # Create the scatter plot of the -log10(p-values) grouped by chromosome.
     # Set the size, shape, and color of the plotted elements.
     #
-    plt = scatter(x = plot_frame[:X], y = plot_frame[:NegativeLogPvalue],
-        group = plot_frame[:Chromosome],
-        markersize = 3, markerstrokewidth = 0, color_palette = :rainbow)
+    plt = scatter(x = plot_frame[:SNPnumber], y = plot_frame[:NegativeLogPvalue],
+      group = plot_frame[:Chromosome],
+      markersize = 3, markerstrokewidth = 0, color_palette = :rainbow)
     #
     # Specify the x-axis tick marks to be at the center of the chromosome.
     # Use x-axis tick marks only in the odd numbered chromosomes.
     # Also, label the x-axis.
     #
-    xticks = by(plot_frame, :Chromosome, plot_frame -> mean(plot_frame[:X]))
+    xticks = by(plot_frame, :Chromosome,
+                plot_frame -> mean(plot_frame[:SNPnumber]))
     xaxis!(plt, xticks = (sort(xticks[:x1].data)[1:2:end], 1:2:size(xticks, 1)))
     xaxis!(plt, xlabel = "Chromosome")
     #
