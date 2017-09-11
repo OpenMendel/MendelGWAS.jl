@@ -167,7 +167,7 @@ function gwas_option(person::Person, snpdata::SnpData,
      "the value 'linear', 'logistic', 'Poisson', or blank.\n \n"))
   end
   #
-  # Retrieve the regression formula and create a model frame.
+  # Retrieve and error check the regression formula.
   #
   regression_formula = keyword["regression_formula"]
   if regression_formula == ""
@@ -211,8 +211,6 @@ function gwas_option(person::Person, snpdata::SnpData,
       "The left hand side should contain only the name of the trait field\n" *
       "in the Pedigree file. If the trait field is unnamed, use 'Trait'.\n \n"))
   end
-  fm = Formula(lhs, rhs)
-  model = ModelFrame(fm, pedigree_frame)
   #
   # If the regression formula includes an interaction term,
   # do not use the fast internal regression code.
@@ -223,40 +221,45 @@ function gwas_option(person::Person, snpdata::SnpData,
   # Since the field :Sex may have type String,
   # create a new field of type Float64 that replaces :Sex.
   #
-  if searchindex(string(rhs), "Sex") > 0 && in(:Sex, names(model.df))
-    model.df[:NumericSex] = ones(person.people)
+  if searchindex(string(rhs), "Sex") > 0 && in(:Sex, names(pedigree_frame))
+    pedigree_frame[:NumericSex] = ones(person.people)
     for i = 1:person.people
-      s = model.df[i, :Sex]
+      s = pedigree_frame[i, :Sex]
       if !isa(parse(string(s), raise=false), Number); s = lowercase(s); end
-      if !(s in keyword["female"]); model.df[i, :NumericSex] = -1.0; end
+      if !(s in keyword["female"]); pedigree_frame[i, :NumericSex] = -1.0; end
     end
-    names_list = names(model.df)
+    names_list = names(pedigree_frame)
     deleteat!(names_list, findin(names_list, [:Sex]))
-    model.df = model.df[:, names_list]
-    rename!(model.df, :NumericSex, :Sex)
+    pedigree_frame = pedigree_frame[:, names_list]
+    rename!(pedigree_frame, :NumericSex, :Sex)
   end
   #
   # For Logistic regression make sure the cases are 1.0,
   # non-cases are 0.0, and missing data is NaN.
-  # Again, since the trait field may be of type string,
-  # create a new field of type Float64 that will replace it.
+  # Again, since the trait field may be of type String,
+  # create a new field of type Float64 that replaces it.
   #
   case_label = keyword["affected_designator"]
   if regression_type == "logistic" && case_label != ""
-    model.df[:NumericTrait] = zeros(person.people)
+    pedigree_frame[:NumericTrait] = zeros(person.people)
     for i = 1:person.people
-      s = string(model.df[i, lhs])
+      s = string(pedigree_frame[i, lhs])
       if s == ""
-        model.df[i, :NumericTrait] = NaN
+        pedigree_frame[i, :NumericTrait] = NaN
       elseif s == case_label
-        model.df[i, :NumericTrait] = 1.0
+        pedigree_frame[i, :NumericTrait] = 1.0
       end
     end
-    names_list = names(model.df)
+    names_list = names(pedigree_frame)
     deleteat!(names_list, findin(names_list, [lhs]))
-    model.df = model.df[:, names_list]
-    rename!(model.df, :NumericTrait, lhs)
+    pedigree_frame = pedigree_frame[:, names_list]
+    rename!(pedigree_frame, :NumericTrait, lhs)
   end
+  #
+  #  Create a model frame.
+  #
+  fm = Formula(lhs, rhs)
+  model = ModelFrame(fm, pedigree_frame)
   #
   # To ensure that the trait and SNPs occur in the same order, sort the
   # the model dataframe by the entry-order column of the pedigree frame.
