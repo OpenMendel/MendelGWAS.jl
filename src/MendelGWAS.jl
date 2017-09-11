@@ -188,7 +188,8 @@ function gwas_option(person::Person, snpdata::SnpData,
     throw(ArgumentError(
       "The left hand side of the formula specified in\n" *
       "the keyword regression_formula appears blank.\n" *
-      "This should be the name of the trait field in the Pedigree file.\n \n"))
+      "The left hand side should contain only the name of the trait field\n" *
+      "in the Pedigree file. If the trait field is unnamed, use 'Trait'.\n \n"))
   end
   if search(side[1], [' ', TAB_CHAR, ',', ';', '+', '*', '&']) > 0
     lhs_string = side[1]
@@ -196,7 +197,7 @@ function gwas_option(person::Person, snpdata::SnpData,
       "The left hand side ('$lhs_string') of the formula specified in\n" *
       "the keyword regression_formula appears to have multiple entries.\n" *
       "The left hand side should contain only the name of the trait field\n" *
-      "in the Pedigree file.\n \n"))
+      "in the Pedigree file. If the trait field is unnamed, use 'Trait'.\n \n"))
   end
   if side[2] == ""; side[2] = "1"; end
   lhs = parse(side[1])
@@ -206,7 +207,9 @@ function gwas_option(person::Person, snpdata::SnpData,
     throw(ArgumentError(
       "The field named on the left hand side of the formula specified in\n" *
       "the keyword regression_formula (currently: '$lhs_string')\n" *
-      "is not in the Pedigree data file.\n \n"))
+      "is not in the Pedigree data file.\n" *
+      "The left hand side should contain only the name of the trait field\n" *
+      "in the Pedigree file. If the trait field is unnamed, use 'Trait'.\n \n"))
   end
   fm = Formula(lhs, rhs)
   model = ModelFrame(fm, pedigree_frame)
@@ -216,16 +219,16 @@ function gwas_option(person::Person, snpdata::SnpData,
   #
   if search(string(rhs), ['*', '&']) > 0; fast_method = false; end
   #
-  # Change sex designations to -1.0 (females) and +1.0 (males).
-  # Since the field :sex may have type string,
-  # create a new field of type Float64 that will replace :sex.
+  # Change sex designations to 1.0 (females) and -1.0 (males).
+  # Since the field :Sex may have type String,
+  # create a new field of type Float64 that replaces :Sex.
   #
   if searchindex(string(rhs), "Sex") > 0 && in(:Sex, names(model.df))
     model.df[:NumericSex] = ones(person.people)
     for i = 1:person.people
       s = model.df[i, :Sex]
       if !isa(parse(string(s), raise=false), Number); s = lowercase(s); end
-      if !(s in keyword["male"]); model.df[i, :NumericSex] = -1.0; end
+      if !(s in keyword["female"]); model.df[i, :NumericSex] = -1.0; end
     end
     names_list = names(model.df)
     deleteat!(names_list, findin(names_list, [:Sex]))
@@ -432,7 +435,8 @@ function gwas_option(person::Person, snpdata::SnpData,
     println(" \nCreating a Manhattan plot from the GWAS results.\n")
     if !contains(plot_file, ".png"); string(plot_file, ".png"); end
     #
-    # Generate a dataframe for plotting. [[There is no need to include basepairs??]]
+    # Generate a dataframe for plotting.
+    # [[There is no need to include basepairs??]]
     #
     plot_frame = DataFrame(
       X = 1:length(pvalue),
@@ -443,7 +447,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     #
     pyplot()
     #
-    # Create the scatter plot of the -log10(p-values) grouped by chromosome number.
+    # Create the scatter plot of the -log10(p-values) grouped by chromosome.
     # Set the size, shape, and color of the plotted elements.
     #
     plt = scatter(x = plot_frame[:X], y = plot_frame[:NegativeLogPvalue],
