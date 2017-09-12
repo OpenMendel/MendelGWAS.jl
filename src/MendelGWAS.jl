@@ -398,6 +398,8 @@ function gwas_option(person::Person, snpdata::SnpData,
       if fast_method && pvalue[snp] < lrt_threshold
         println(io, "SNP effect estimate: ", signif(estimate[end], 4))
         println(io, "SNP model loglikelihood: ", signif(loglikelihood, 8))
+      elseif fast_method
+        println(io, "SNP effect estimate: ", signif(estimate[end], 4))
       else
         println(io, "")
         println(io, snp_model)
@@ -422,7 +424,7 @@ function gwas_option(person::Person, snpdata::SnpData,
   println(io, "        P-value   Number of Passing")
   println(io, "FDR    Threshold     Predictors \n")
   for i = 1:length(fdr)
-    @printf(io,"%4.2f   %8.5f   %9i\n", fdr[i], threshold[i], number_passing[i])
+    @printf(io, "%4.2f   %8.5f   %9i\n", fdr[i], threshold[i], number_passing[i])
   end
   println(io, " ")
   #
