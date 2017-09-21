@@ -16,8 +16,13 @@ import Compat: view
 using DataFrames                        # From package DataFrames.
 using Distributions                     # From package Distributions.
 using GLM                               # From package GLM.
-using Plots                             # From package Plots.
 using StatsBase                         # From package StatsBase.
+#
+# Use Plots as the plotting frontend and select a backend.
+#
+using Plots                             # From package Plots.
+gr()
+## pyplot()
 
 export GWAS
 
@@ -433,27 +438,22 @@ function gwas_option(person::Person, snpdata::SnpData,
   # [[Next, sort the data by chromosome and basepair location!]]
   #
   plot_file = keyword["manhattan_plot_file"]
-  if plot_file != "" && VERSION ≥ v"0.5.0" && VERSION < v"0.6.0"
-##  if plot_file != ""
+  if plot_file != ""
     println(" \nCreating a Manhattan plot from the GWAS results.\n")
     if !contains(plot_file, ".png"); string(plot_file, ".png"); end
     #
     # Generate a dataframe for plotting.
-    # [[There is no need to include basepairs??]]
+    # Plot via SNP number. Should be via basepair position!
     #
     plot_frame = DataFrame( SNPnumber = 1:snps,
       NegativeLogPvalue = -log10.(pvalue),
       Chromosome = snpdata.chromosome)
     #
-    # Choose a plotting backend for the Plots frontend to use.
-    #
-    pyplot()
-    #
     # Create the scatter plot of the -log10(p-values) grouped by chromosome.
     # Set the size, shape, and color of the plotted elements.
     #
-    plt = scatter(x = plot_frame[:SNPnumber], y = plot_frame[:NegativeLogPvalue],
-      group = plot_frame[:Chromosome],
+    plt = scatter( x = plot_frame[:SNPnumber],
+      y = plot_frame[:NegativeLogPvalue], group = plot_frame[:Chromosome],
       markersize = 3, markerstrokewidth = 0, color_palette = :rainbow)
     #
     # Specify the x-axis tick marks to be at the center of the chromosome.
@@ -467,7 +467,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     #
     # Add the y-axis information.
     #
-    yaxis!(plt, ylabel = "-log\$_{10}\$(p-value)")
+    yaxis!(plt, ylabel = "-log10(p-value)")
     #
     # Use a grey grid and remove the legend.
     #
@@ -481,11 +481,12 @@ function gwas_option(person::Person, snpdata::SnpData,
     #
     Plots.abline!(plt, 0, -log10(.05 / length(pvalue)), color = :black,
         line = :dash)
+##    hline!(plt, -log10(.05 / length(pvalue)), line = (1, :dash, 0.5, :black))
     #
     # Display the plot and then save the plot to a file.
     #
-    display(plt)
     savefig(plt, plot_file)
+    display(plt)
   end
   return execution_error = false
 end # function gwas_option

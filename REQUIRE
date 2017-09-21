@@ -4,6 +4,7 @@ Compat
 DataFrames
 Distributions
 GLM
+GR
 Plots
 PyPlot
 StatsBase
