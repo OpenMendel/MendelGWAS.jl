@@ -452,8 +452,8 @@ function gwas_option(person::Person, snpdata::SnpData,
     # Create the scatter plot of the -log10(p-values) grouped by chromosome.
     # Set the size, shape, and color of the plotted elements.
     #
-    plt = scatter( x = plot_frame[:SNPnumber],
-      y = plot_frame[:NegativeLogPvalue], group = plot_frame[:Chromosome],
+    plt = scatter( plot_frame[:SNPnumber], plot_frame[:NegativeLogPvalue],
+      group = plot_frame[:Chromosome],
       markersize = 3, markerstrokewidth = 0, color_palette = :rainbow)
     #
     # Specify the x-axis tick marks to be at the center of the chromosome.
