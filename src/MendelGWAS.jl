@@ -56,6 +56,8 @@ function GWAS(control_file = ""; args...)
   keyword["link"] = ""         # LogitLink(), IdentityLink(), LogLink(), etc.
   keyword["lrt_threshold"] = 5e-8
   keyword["maf_threshold"] = 0.01
+  keyword["min_success_rate_per_sample"] = 0.98
+  keyword["min_success_rate_per_snp"] = 0.98
   keyword["manhattan_plot_file"] = ""
   keyword["regression"] = ""   # Linear, Logistic, or Poisson
   keyword["regression_formula"] = ""
@@ -123,6 +125,8 @@ function gwas_option(person::Person, snpdata::SnpData,
   io = keyword["output_unit"]
   lrt_threshold = keyword["lrt_threshold"]
   maf_threshold = keyword["maf_threshold"]
+  min_success_rate_per_sample = keyword["min_success_rate_per_sample"]
+  min_success_rate_per_snp = keyword["min_success_rate_per_snp"]
   #
   # Recognize the three basic GWAS regression models:
   # Linear, Logistic, and Poisson.
@@ -227,8 +231,8 @@ function gwas_option(person::Person, snpdata::SnpData,
   # create a new field of type Float64 that replaces :Sex.
   #
   if searchindex(string(rhs), "Sex") > 0 && in(:Sex, names(pedigree_frame))
-    pedigree_frame[:NumericSex] = ones(person.people)
-    for i = 1:person.people
+    pedigree_frame[:NumericSex] = ones(people)
+    for i = 1:people
       s = pedigree_frame[i, :Sex]
       if !isa(parse(string(s), raise=false), Number); s = lowercase(s); end
       if !(s in keyword["female"]); pedigree_frame[i, :NumericSex] = -1.0; end
@@ -236,21 +240,21 @@ function gwas_option(person::Person, snpdata::SnpData,
     names_list = names(pedigree_frame)
     deleteat!(names_list, findin(names_list, [:Sex]))
     pedigree_frame = pedigree_frame[:, names_list]
-    rename!(pedigree_frame, :NumericSex, :Sex)
+    rename!(pedigree_frame, :NumericSex => :Sex)
   end
   #
   # For Logistic regression make sure the cases are 1.0,
-  # non-cases are 0.0, and missing data is NaN.
+  # non-cases are 0.0, and missing data is "missing".
   # Again, since the trait field may be of type String,
   # create a new field of type Float64 that replaces it.
   #
   case_label = keyword["affected_designator"]
   if regression_type == "logistic" && case_label != ""
-    pedigree_frame[:NumericTrait] = zeros(person.people)
-    for i = 1:person.people
-      s = string(pedigree_frame[i, lhs])
-      if s == ""
-        pedigree_frame[i, :NumericTrait] = NaN
+    pedigree_frame[:NumericTrait] = zeros(people)
+    for i = 1:people
+      s = strip(string(pedigree_frame[i, lhs]))
+      if s == "" || s == "NaN" || s == "missing" || s == "NA"
+        pedigree_frame[i, :NumericTrait] = missing
       elseif s == case_label
         pedigree_frame[i, :NumericTrait] = 1.0
       end
@@ -258,49 +262,61 @@ function gwas_option(person::Person, snpdata::SnpData,
     names_list = names(pedigree_frame)
     deleteat!(names_list, findin(names_list, [lhs]))
     pedigree_frame = pedigree_frame[:, names_list]
-    rename!(pedigree_frame, :NumericTrait, lhs)
+    rename!(pedigree_frame, :NumericTrait => lhs)
   end
   #
-  #  Create a model frame.
+  # To filter the SNP data, first find the SNPs and samples
+  # that surpass the requested success rates.
+  #
+  snp_mask, sample_mask = SnpArrays.filter(snpdata.snpmatrix,
+    min_success_rate_per_snp, min_success_rate_per_sample)
+  #
+  # Create a model frame.
+  # Note that the model data collections invoke the sample_mask,
+  # thus have size = people - too.few.genotypes.
   #
   fm = Formula(lhs, rhs)
-  model = ModelFrame(fm, pedigree_frame)
+  model = ModelFrame(fm, pedigree_frame[sample_mask, :])
   #
   # To ensure that the trait and SNPs occur in the same order, sort the
   # the model dataframe by the entry-order column of the pedigree frame.
   #
-  model.df[:EntryOrder] = pedigree_frame[:EntryOrder]
+  model.df[:EntryOrder] = pedigree_frame[sample_mask, :EntryOrder]
   sort!(model.df, cols = [:EntryOrder])
   names_list = names(model.df)
   deleteat!(names_list, findin(names_list, [:EntryOrder]))
   model.df = model.df[:, names_list]
   #
   # First consider the base model with no SNPs included.
-  # If using one of the standard regression models,
+  # If using one of the standard regression models without interactions,
   # then use the fast regression code in OpenMendel's general utilities file.
   # Otherwise, for general distributions, use the code in the GLM package.
   #
   if fast_method
     #
-    # Create the model matrix, initially still with any missing values.
-    # Copy only the complete rows into design matrix X and response vector y.
+    # Create the model matrix, initially still with any missing predictor values.
+    # Copy only the complete rows into design matrix X and response vector y,
+    # thus they have size = people - too.few.genotypes - incomplete.predictors.
+    # Note that the completeness_mask should be applied after the sample_mask.
     #
     modelmatrx = ModelMatrix(model)
-    complete = completecases(model.df)
-    cases = sum(complete)
+    completeness_mask = completecases(model.df)
+    cases = sum(completeness_mask)
     predictors = size(modelmatrx.m, 2)
     X = zeros(cases, predictors)
+    base_estimate = zeros(predictors)
     for j = 1:predictors
-      X[:, j] = modelmatrx.m[complete, j]
+      X[:, j] = modelmatrx.m[completeness_mask, j]
     end
     y = zeros(cases)
-    y[1:end] = model.df[complete, lhs]
+    y[1:end] = model.df[completeness_mask, lhs]
     #
-    # Estimate parameters under the base model. Record the vector of residuals.
+    # Estimate parameters under the base model.
+    # Then, for linear regression, record the vector of residuals.
     #
     (base_estimate, base_loglikelihood) = regress(X, y, regression_type)
     if regression_type == "linear"
-      residual_base = y - (X * base_estimate)
+      base_residual = y - (X * base_estimate)
     end
     #
     # Output the results of the base model.
@@ -324,6 +340,7 @@ function gwas_option(person::Person, snpdata::SnpData,
   else
     #
     # Let the GLM package estimate parameters. Output results.
+    # ?? Assumming the glm estimates only use complete cases??
     #
     base_model = glm(fm, model.df, distribution_family, link)
     println(io, "Summary for Base Model:\n ")
@@ -341,45 +358,81 @@ function gwas_option(person::Person, snpdata::SnpData,
   #
   # Analyze the SNP predictors one by one.
   #
-  dosage = zeros(people)
+##  dosage = zeros(people)
+  dosage = zeros(sum(sample_mask))
   pvalue = ones(snps)
+  alt_estimate = zeros(predictors+1)
+  if fast_method && regression_type == "linear"
+    alt_residual = zeros(cases)
+  end
+  skipped_snps = 0
+  chr_max_bp = zeros(Integer, 50) # Assumes number of chromosomes <= 50.
+  current_chr_number = 1
+  current_chr = snpdata.chromosome[1]
   for snp = 1:snps
     #
-    # Ignore SNPs with MAF below the specified threshold.
+    # Find maximum basepair listed for each chromosome.
+    # Note that this section assumes SNPs on the same chromosome
+    # are listed in a contigous block.
     #
-    if snpdata.maf[snp] <= maf_threshold; continue; end
+    if snpdata.chromosome[snp] != current_chr
+      current_chr = snpdata.chromosome[snp]
+      current_chr_number = current_chr_number + 1
+    end
+    if !ismissing(snpdata.basepairs[snp])
+      chr_max_bp[current_chr_number] =
+        max(chr_max_bp[current_chr_number], snpdata.basepairs[snp])
+    end
     #
-    # Copy the current SNP genotypes into a dosage vector,
+    # Skip analysis of SNPs with MAF or genotype success rate
+    # below the specified thresholds.
+    #
+    if snpdata.maf[snp] <= maf_threshold || !snp_mask[snp]
+      skipped_snps = skipped_snps + 1
+      continue
+    end
+    #
+    # Copy the filtered SNP genotypes into a dosage vector,
     # allowing missing genotypes to be simplistically imputed based on MAF.
     #
-    copy!(dosage, view(snpdata.snpmatrix, :, snp); impute = true)
+##    copy!(dosage, view(snpdata.snpmatrix, :, snp); impute = true)
+    copy!(dosage, view(snpdata.snpmatrix, sample_mask, snp); impute = true)
     #
     # For the three basic regression types, analyze the alternative model
     # using internal score test code. If the score test p-value
     # is below the specified threshold, carry out a likelihood ratio test.
     #
     if fast_method
-      X[:, end] = dosage[complete]
-      estimate = [base_estimate; 0.0]
-      score_test = glm_score_test(X, y, estimate, regression_type)
+##      copy!(X[:, end], dosage[1:cases])
+##      @views X[:, end] = copy(dosage[1:cases])
+##      copy!(X[:, end], dosage[completeness_mask])
+##      copy!(X[:, end], view(dosage, completeness_mask))
+##      BLAS.blascopy!(cases, dosage[1:cases], 1, X[:, end], 1)
+##      X[:, end] .= view(dosage, completeness_mask)
+      X[:, end] = dosage[completeness_mask]
+##if snp == 1; println(" X[:, end] = ", typeof(X), " :: ", X[:, end]); end
+      alt_estimate = [base_estimate; 0.0]
+      score_test = glm_score_test(X, y, alt_estimate, regression_type)
       pvalue[snp] = ccdf(Chisq(1), score_test)
       if pvalue[snp] < lrt_threshold
-        (estimate, loglikelihood) = regress(X, y, regression_type)
-        lrt = 2.0 * (loglikelihood - base_loglikelihood)
+        (alt_estimate, alt_loglikelihood) = regress(X, y, regression_type)
+        lrt = 2.0 * (alt_loglikelihood - base_loglikelihood)
         pvalue[snp] = ccdf(Chisq(1), lrt)
       end
       #
-      # Record the vector of residuals under this alternative model.
+      # Record the vector of residuals under this alternative model:
+      # alt_residual = y - (X * alt_estimate)
       #
       if regression_type == "linear"
-        residual_snp = y - (X * estimate)
+        A_mul_B!(alt_residual, X, alt_estimate)
+        alt_residual .= y .- alt_residual
       end
     #
     # For other distributions analyze the alternative model
     # using the GLM package.
     #
     else
-      model.df[:SNP] = dosage
+      model.df[:SNP] = dosage[completeness_mask]
       snp_model = fit(GeneralizedLinearModel, fm, model.df,
         distribution_family, link)
       pvalue[snp] = coeftable(snp_model).cols[end][end].v
@@ -401,10 +454,10 @@ function gwas_option(person::Person, snpdata::SnpData,
       end
       println(io, "Hardy-Weinberg p-value: ", round(hw, 4))
       if fast_method && pvalue[snp] < lrt_threshold
-        println(io, "SNP effect estimate: ", signif(estimate[end], 4))
-        println(io, "SNP model loglikelihood: ", signif(loglikelihood, 8))
+        println(io, "SNP effect estimate: ", signif(alt_estimate[end], 4))
+        println(io, "SNP model loglikelihood: ", signif(alt_loglikelihood, 8))
       elseif fast_method
-        println(io, "SNP effect estimate: ", signif(estimate[end], 4))
+        println(io, "SNP effect estimate: ", signif(alt_estimate[end], 4))
       else
         println(io, "")
         println(io, snp_model)
@@ -414,17 +467,18 @@ function gwas_option(person::Person, snpdata::SnpData,
       # that is explained by including this SNP in the model.
       #
       if regression_type == "linear"
-        variance_explained = 1 - (norm(residual_snp)^2 / norm(residual_base)^2)
-        println(io, "Proportion of base model variance explained: ",
+        variance_explained = 1 - (norm(alt_residual)^2 / norm(base_residual)^2)
+        println(io, "Proportion of base-model variance explained: ",
           round(variance_explained, 4))
       end
     end
+##if snp == 1; return; end
   end
   #
   # Output false discovery rates.
   #
   fdr = [0.01, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
-  (number_passing, threshold) = simes_fdr(pvalue, fdr, snps)
+  (number_passing, threshold) = simes_fdr(pvalue, fdr, snps - skipped_snps)
   println(io, " \n \n ")
   println(io, "        P-value   Number of Passing")
   println(io, "FDR    Threshold     Predictors \n")
@@ -434,35 +488,72 @@ function gwas_option(person::Person, snpdata::SnpData,
   println(io, " ")
   #
   # If requested, output a Manhattan Plot in .png format.
-  # First, create a new dataframe that will hold the SNP data to plot.
-  # [[Next, sort the data by chromosome and basepair location!]]
   #
   plot_file = keyword["manhattan_plot_file"]
   if plot_file != ""
     println(" \nCreating a Manhattan plot from the GWAS results.\n")
     if !contains(plot_file, ".png"); string(plot_file, ".png"); end
     #
-    # Generate a dataframe for plotting.
-    # Plot via SNP number. Should be via basepair position!
+    # Determine if any non-zero basepairs are present in the data set.
+    # If so, use basepair position as the x-axis for the Manhattan plot.
+    # Otherwise, use SNP number.
     #
-    plot_frame = DataFrame( SNPnumber = 1:snps,
-      NegativeLogPvalue = -log10.(pvalue),
-      Chromosome = snpdata.chromosome)
+    using_basepairs =  (maximum(chr_max_bp) > 0)
+    #
+    # Find adjusted basepair position for each SNP,
+    # which is the position from the start of the data.
+    #
+    if using_basepairs
+      current_chr_number = 1
+      running_bp_level = 0
+      adj_bp = copy(snpdata.basepairs)
+      for snp = 2:snps
+        if snpdata.chromosome[snp] != snpdata.chromosome[snp-1]
+          running_bp_level = running_bp_level + chr_max_bp[current_chr_number]
+          current_chr_number = current_chr_number + 1
+        end
+        if current_chr_number > 1
+          adj_bp[snp] = adj_bp[snp] + running_bp_level
+        end
+      end
+    end
+    #
+    # Create a new dataframe that will hold the data to plot:
+    # (X) adjusted basepair positions or SNP numbers and (Y) -log10(p-values).
     #
     # Create the scatter plot of the -log10(p-values) grouped by chromosome.
     # Set the size, shape, and color of the plotted elements.
     #
-    plt = scatter( plot_frame[:SNPnumber], plot_frame[:NegativeLogPvalue],
-      group = plot_frame[:Chromosome],
-      markersize = 3, markerstrokewidth = 0, color_palette = :rainbow)
+    # Specify the x-axis tick marks to be at the center of the chromosomes.
     #
-    # Specify the x-axis tick marks to be at the center of the chromosome.
+    if using_basepairs
+      plot_frame = DataFrame(AdjBasepairs = adj_bp,
+        Chromosome = snpdata.chromosome,
+        NegativeLogPvalue = -log10.(pvalue))
+
+      plt = scatter(plot_frame[:AdjBasepairs], plot_frame[:NegativeLogPvalue],
+        group = plot_frame[:Chromosome],
+        markersize = 3, markerstrokewidth = 0, color_palette = :rainbow)
+
+      xticks = by(plot_frame, :Chromosome,
+        plot_frame -> mean(plot_frame[:AdjBasepairs]))
+    else
+      plot_frame = DataFrame(SNPnumber = 1:snps,
+        Chromosome = snpdata.chromosome,
+        NegativeLogPvalue = -log10.(pvalue))
+
+      plt = scatter(plot_frame[:SNPnumber], plot_frame[:NegativeLogPvalue],
+        group = plot_frame[:Chromosome],
+        markersize = 3, markerstrokewidth = 0, color_palette = :rainbow)
+
+      xticks = by(plot_frame, :Chromosome,
+        plot_frame -> mean(plot_frame[:SNPnumber]))
+    end
+    #
     # Use x-axis tick marks only in the odd numbered chromosomes.
     # Also, label the x-axis.
     #
-    xticks = by(plot_frame, :Chromosome,
-                plot_frame -> mean(plot_frame[:SNPnumber]))
-    xaxis!(plt, xticks = (sort(xticks[:x1].data)[1:2:end], 1:2:size(xticks, 1)))
+    xaxis!(plt, xticks = (sort(xticks[:x1])[1:2:end], 1:2:size(xticks, 1)))
     xaxis!(plt, xlabel = "Chromosome")
     #
     # Add the y-axis information.
@@ -481,12 +572,12 @@ function gwas_option(person::Person, snpdata::SnpData,
     #
     Plots.abline!(plt, 0, -log10(.05 / length(pvalue)), color = :black,
         line = :dash)
-##    hline!(plt, -log10(.05 / length(pvalue)), line = (1, :dash, 0.5, :black))
+##    hline!(plt, -log10(0.05 / length(pvalue)), color = :black, line = :dash)
     #
     # Display the plot and then save the plot to a file.
     #
+    ## display(plt)
     savefig(plt, plot_file)
-    display(plt)
   end
   return execution_error = false
 end # function gwas_option
