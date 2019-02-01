@@ -7,7 +7,7 @@ Mendel GWAS analysis input data is unrelated individuals genotyped at a large nu
 ### Installation
 *Note: The three OpenMendel packages (1) [SnpArrays](https://openmendel.github.io/SnpArrays.jl/latest/), (2) [MendelSearch](https://openmendel.github.io/MendelSearch.jl), and (3) [MendelBase](https://openmendel.github.io/MendelBase.jl) must be installed before any other OpenMendel package will run. It is easiest if these three packages are installed in the above order and before any other OpenMendel package.*
 
-Within Julia, use the package manager to install Mendel:
+Within Julia, use the package manager to install MendelGWAS:
 
    pkg> add https://github.com/OpenMendel/MendelGWAS.jl.git
 
