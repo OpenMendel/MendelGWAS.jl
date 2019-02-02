@@ -1,3 +1,5 @@
+__precompile__()
+
 """
 This module orchestrates a GWAS analysis.
 """
@@ -10,17 +12,17 @@ using SnpArrays
 #
 # Required external modules.
 #
-using Compat
-import Compat: view
-
-using DataFrames                        # From package DataFrames.
-using Distributions                     # From package Distributions.
-using GLM                               # From package GLM.
-using StatsBase                         # From package StatsBase.
+using CSV
+using DataFrames
+using Distributions
+using GLM
+using Missings
+using Printf
+using StatsBase
 #
 # Use Plots as the plotting frontend and select a backend.
 #
-using Plots                             # From package Plots.
+using Plots
 gr()
 ## pyplot()
 
@@ -31,7 +33,7 @@ This is the wrapper function for the GWAS analysis option.
 """
 function GWAS(control_file = ""; args...)
 
-  const GWAS_VERSION :: VersionNumber = v"0.1.0"
+  GWAS_VERSION :: VersionNumber = v"0.1.0"
   #
   # Print the logo. Store the initial directory.
   #
@@ -59,6 +61,7 @@ function GWAS(control_file = ""; args...)
   keyword["min_success_rate_per_sample"] = 0.98
   keyword["min_success_rate_per_snp"] = 0.98
   keyword["manhattan_plot_file"] = ""
+  keyword["output_table"] = "" # Table fo all SNPs and their p-values
   keyword["regression"] = ""   # Linear, Logistic, or Poisson
   keyword["regression_formula"] = ""
   keyword["pcs"] = 0      # Number of Principal Components to include in model.
@@ -90,9 +93,9 @@ function GWAS(control_file = ""; args...)
   # these PCs will be included in the regression procedure.
   # Each PC will be named PCn where n is its number, e.g., "PC1".
   #
-  if keyword["pcs"] > 0
-    add_pcs!(pedigree_frame, snpdata, keyword)
-  end
+##!!  if keyword["pcs"] > 0
+##!!    add_pcs!(pedigree_frame, snpdata, keyword)
+##!!  end
   #
   # Execute the specified analysis.
   #
@@ -115,10 +118,10 @@ end # function GWAS
 """
 This function performs GWAS on a set of traits.
 """
-function gwas_option(person::Person, snpdata::SnpData,
+function gwas_option(person::Person, snpdata::SnpDataStruct,
   pedigree_frame::DataFrame, keyword::Dict{AbstractString, Any})
 
-  const TAB_CHAR :: Char = Char(9)
+  TAB_CHAR :: Char = Char(9)
 
   people = person.people
   snps = snpdata.snps
@@ -184,7 +187,7 @@ function gwas_option(person::Person, snpdata::SnpData,
       "The keyword regression_formula appears blank.\n" *
       "A regression formula must be provided.\n \n"))
   end
-  if !contains(regression_formula, "~")
+  if !occursin("~", regression_formula)
     throw(ArgumentError(
       "The value of the keyword regression_formula ('$regression_formula')\n" *
       "does not contain the required '~' that should separate\n" *
@@ -198,19 +201,20 @@ function gwas_option(person::Person, snpdata::SnpData,
       "The left hand side of the formula specified in\n" *
       "the keyword regression_formula appears blank.\n" *
       "The left hand side should contain only the name of the trait field\n" *
-      "in the Pedigree file. If the trait field is unnamed, use 'Trait'.\n \n"))
+      "in the Pedigree data. If the trait field is unnamed, use 'Trait'.\n \n"))
   end
-  if search(side[1], [' ', TAB_CHAR, ',', ';', '+', '*', '&']) > 0
+  entry_separators = [' ', TAB_CHAR, ',', ';', '+', '*', '&']
+  if something(findfirst((in)(entry_separators), side[1]), 0) > 0
     lhs_string = side[1]
     throw(ArgumentError(
       "The left hand side ('$lhs_string') of the formula specified in\n" *
       "the keyword regression_formula appears to have multiple entries.\n" *
       "The left hand side should contain only the name of the trait field\n" *
-      "in the Pedigree file. If the trait field is unnamed, use 'Trait'.\n \n"))
+      "in the Pedigree data. If the trait field is unnamed, use 'Trait'.\n \n"))
   end
   if side[2] == ""; side[2] = "1"; end
-  lhs = parse(side[1])
-  rhs = parse(side[2])
+  lhs = Meta.parse(side[1])
+  rhs = Meta.parse(side[2])
   if !(lhs in names(pedigree_frame))
     lhs_string = string(lhs)
     throw(ArgumentError(
@@ -218,27 +222,31 @@ function gwas_option(person::Person, snpdata::SnpData,
       "the keyword regression_formula (currently: '$lhs_string')\n" *
       "is not in the Pedigree data file.\n" *
       "The left hand side should contain only the name of the trait field\n" *
-      "in the Pedigree file. If the trait field is unnamed, use 'Trait'.\n \n"))
+      "in the Pedigree data. If the trait field is unnamed, use 'Trait'.\n \n"))
   end
   #
   # If the regression formula includes an interaction term,
   # do not use the fast internal regression code.
   #
-  if search(string(rhs), ['*', '&']) > 0; fast_method = false; end
+  interaction_symbols = ['*', '&']
+  if something(findfirst((in)(interaction_symbols), string(rhs)), 0) > 0
+    fast_method = false
+  end
   #
   # Change sex designations to 1.0 (females) and -1.0 (males).
   # Since the field :Sex may have type String,
   # create a new field of type Float64 that replaces :Sex.
   #
-  if searchindex(string(rhs), "Sex") > 0 && in(:Sex, names(pedigree_frame))
+  if first(something(findfirst("Sex", string(rhs)), 0:-1)) > 0 &&
+     in(:Sex, names(pedigree_frame))
     pedigree_frame[:NumericSex] = ones(people)
     for i = 1:people
       s = pedigree_frame[i, :Sex]
-      if !isa(parse(string(s), raise=false), Number); s = lowercase(s); end
+      if !isa(Meta.parse(string(s), raise=false), Number); s = lowercase(s); end
       if !(s in keyword["female"]); pedigree_frame[i, :NumericSex] = -1.0; end
     end
     names_list = names(pedigree_frame)
-    deleteat!(names_list, findin(names_list, [:Sex]))
+    deleteat!(names_list, findall((in)([:Sex]), names_list))
     pedigree_frame = pedigree_frame[:, names_list]
     rename!(pedigree_frame, :NumericSex => :Sex)
   end
@@ -260,7 +268,7 @@ function gwas_option(person::Person, snpdata::SnpData,
       end
     end
     names_list = names(pedigree_frame)
-    deleteat!(names_list, findin(names_list, [lhs]))
+    deleteat!(names_list, findall((in)([lhs]), names_list))
     pedigree_frame = pedigree_frame[:, names_list]
     rename!(pedigree_frame, :NumericTrait => lhs)
   end
@@ -268,23 +276,26 @@ function gwas_option(person::Person, snpdata::SnpData,
   # To filter the SNP data, first find the SNPs and samples
   # that surpass the requested success rates.
   #
-  snp_mask, sample_mask = SnpArrays.filter(snpdata.snpmatrix,
+  sample_mask, snp_mask = SnpArrays.filter(snpdata.snpmatrix,
     min_success_rate_per_snp, min_success_rate_per_sample)
   #
   # Create a model frame.
   # Note that the model data collections invoke the sample_mask,
   # thus have size = people - too.few.genotypes.
   #
-  fm = Formula(lhs, rhs)
+##
+## Does model include individuals that have missing values in lhs?? rhs??
+##
+  fm = @eval(@formula($lhs ~ $rhs))
   model = ModelFrame(fm, pedigree_frame[sample_mask, :])
   #
   # To ensure that the trait and SNPs occur in the same order, sort the
   # the model dataframe by the entry-order column of the pedigree frame.
   #
   model.df[:EntryOrder] = pedigree_frame[sample_mask, :EntryOrder]
-  sort!(model.df, cols = [:EntryOrder])
+  sort!(model.df, :EntryOrder)
   names_list = names(model.df)
-  deleteat!(names_list, findin(names_list, [:EntryOrder]))
+  deleteat!(names_list, findall((in)([:EntryOrder]), names_list))
   model.df = model.df[:, names_list]
   #
   # First consider the base model with no SNPs included.
@@ -314,7 +325,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     # Estimate parameters under the base model.
     # Then, for linear regression, record the vector of residuals.
     #
-    (base_estimate, base_loglikelihood) = regress(X, y, regression_type)
+    (base_estimate, base_loglikelihood) = fast_regress(X, y, regression_type)
     if regression_type == "linear"
       base_residual = y - (X * base_estimate)
     end
@@ -327,15 +338,18 @@ function gwas_option(person::Person, snpdata::SnpData,
     println(io, "Link function: ", "canonical")
     names_list = names(model.df)
     model_names = size(names_list,1)
-    outcome_index = findin(names_list, [lhs])[1]
+    outcome_index = findall((in)([lhs]), names_list)[1]
     println(io, "Base components' effect estimates: ")
-    println(io, "   (Intercept) : ", signif(base_estimate[outcome_index], 6))
+    println(io, "   (Intercept) : ",
+      round(base_estimate[outcome_index], sigdigits = 6))
     for j = 1:model_names
       if j != outcome_index
-        println(io, "   ", names_list[j], " : ", signif(base_estimate[j], 6))
+        println(io, "   ", names_list[j], " : ",
+          round(base_estimate[j], sigdigits = 6))
       end
     end
-    println(io, "Base model loglikelihood: ", signif(base_loglikelihood, 8))
+    println(io, "Base model loglikelihood: ",
+      round(base_loglikelihood, sigdigits = 8))
     println(io, " ")
   else
     #
@@ -353,8 +367,8 @@ function gwas_option(person::Person, snpdata::SnpData,
   # Change the regression formula to include the SNP.
   #
   if fast_method; X = [X zeros(cases)]; end
-  rhs = parse(side[2] * " + SNP")
-  fm = Formula(lhs, rhs)
+  rhs = Meta.parse(side[2] * " + SNP")
+  fm = @eval(@formula($lhs ~ $rhs))
   #
   # Analyze the SNP predictors one by one.
   #
@@ -395,8 +409,8 @@ function gwas_option(person::Person, snpdata::SnpData,
     # Copy the filtered SNP genotypes into a dosage vector,
     # allowing missing genotypes to be simplistically imputed based on MAF.
     #
-##    copy!(dosage, view(snpdata.snpmatrix, :, snp); impute = true)
-    copy!(dosage, view(snpdata.snpmatrix, sample_mask, snp); impute = true)
+##    copyto!(dosage, view(snpdata.snpmatrix, :, snp); impute = true)
+    copyto!(dosage, view(snpdata.snpmatrix, sample_mask, snp); impute = true)
     #
     # For the three basic regression types, analyze the alternative model
     # using internal score test code. If the score test p-value
@@ -412,10 +426,10 @@ function gwas_option(person::Person, snpdata::SnpData,
       X[:, end] = dosage[completeness_mask]
 ##if snp == 1; println(" X[:, end] = ", typeof(X), " :: ", X[:, end]); end
       alt_estimate = [base_estimate; 0.0]
-      score_test = glm_score_test(X, y, alt_estimate, regression_type)
+      score_test = fast_score_test(X, y, alt_estimate, regression_type)
       pvalue[snp] = ccdf(Chisq(1), score_test)
       if pvalue[snp] < lrt_threshold
-        (alt_estimate, alt_loglikelihood) = regress(X, y, regression_type)
+        (alt_estimate, alt_loglikelihood) = fast_regress(X, y, regression_type)
         lrt = 2.0 * (alt_loglikelihood - base_loglikelihood)
         pvalue[snp] = ccdf(Chisq(1), lrt)
       end
@@ -424,7 +438,7 @@ function gwas_option(person::Person, snpdata::SnpData,
       # alt_residual = y - (X * alt_estimate)
       #
       if regression_type == "linear"
-        A_mul_B!(alt_residual, X, alt_estimate)
+        mul!(alt_residual, X, alt_estimate) # alt_residual = X * alt_estimate
         alt_residual .= y .- alt_residual
       end
     #
@@ -445,19 +459,23 @@ function gwas_option(person::Person, snpdata::SnpData,
       println(io, "Summary for SNP ", snpdata.snpid[snp])
       println(io, " on chromosome ", snpdata.chromosome[snp],
         " at basepair ", snpdata.basepairs[snp])
-      println(io, "SNP p-value: ", signif(pvalue[snp], 4))
-      println(io, "Minor allele frequency: ", round(snpdata.maf[snp], 4))
+      println(io, "SNP p-value: ", round(pvalue[snp], sigdigits = 4))
+      println(io, "Minor allele frequency: ",
+        round(snpdata.maf[snp], sigdigits = 4))
       if uppercase(snpdata.chromosome[snp]) == "X"
         hw = xlinked_hardy_weinberg_test(dosage, person.male)
       else
         hw = hardy_weinberg_test(dosage)
       end
-      println(io, "Hardy-Weinberg p-value: ", round(hw, 4))
+      println(io, "Hardy-Weinberg p-value: ", round(hw, sigdigits = 4))
       if fast_method && pvalue[snp] < lrt_threshold
-        println(io, "SNP effect estimate: ", signif(alt_estimate[end], 4))
-        println(io, "SNP model loglikelihood: ", signif(alt_loglikelihood, 8))
+        println(io, "SNP effect estimate: ",
+          round(alt_estimate[end], sigdigits = 4))
+        println(io, "SNP model loglikelihood: ",
+          round(alt_loglikelihood, sigdigits = 8))
       elseif fast_method
-        println(io, "SNP effect estimate: ", signif(alt_estimate[end], 4))
+        println(io, "SNP effect estimate: ",
+          round(alt_estimate[end], sigdigits = 4))
       else
         println(io, "")
         println(io, snp_model)
@@ -469,7 +487,7 @@ function gwas_option(person::Person, snpdata::SnpData,
       if regression_type == "linear"
         variance_explained = 1 - (norm(alt_residual)^2 / norm(base_residual)^2)
         println(io, "Proportion of base-model variance explained: ",
-          round(variance_explained, 4))
+          round(variance_explained, sigdigits = 4))
       end
     end
 ##if snp == 1; return; end
@@ -487,12 +505,29 @@ function gwas_option(person::Person, snpdata::SnpData,
   end
   println(io, " ")
   #
+  # If requested, output a full listing of the p-values in csv format.
+  #
+  table_file = string(keyword["output_table"])
+  if table_file != ""
+    #
+    # Create a new dataframe that will hold the data to output.
+    #
+    output_frame = DataFrame(SNP = snpdata.snpid,
+      Chromosome = snpdata.chromosome,
+      BasePair = snpdata.basepairs,
+      Pvalue = pvalue,
+      NegLog10Pvalue = -log10.(pvalue))
+    CSV.write(table_file, output_frame;
+      writeheader = true, delim = keyword["output_field_separator"],
+      missingstring = keyword["output_missing_value"])
+  end
+  #
   # If requested, output a Manhattan Plot in .png format.
   #
   plot_file = keyword["manhattan_plot_file"]
   if plot_file != ""
     println(" \nCreating a Manhattan plot from the GWAS results.\n")
-    if !contains(plot_file, ".png"); string(plot_file, ".png"); end
+    if !occursin(".png", plot_file); string(plot_file, ".png"); end
     #
     # Determine if any non-zero basepairs are present in the data set.
     # If so, use basepair position as the x-axis for the Manhattan plot.
@@ -506,7 +541,7 @@ function gwas_option(person::Person, snpdata::SnpData,
     if using_basepairs
       current_chr_number = 1
       running_bp_level = 0
-      adj_bp = copy(snpdata.basepairs)
+      adj_bp = deepcopy(snpdata.basepairs)
       for snp = 2:snps
         if snpdata.chromosome[snp] != snpdata.chromosome[snp-1]
           running_bp_level = running_bp_level + chr_max_bp[current_chr_number]
@@ -582,32 +617,39 @@ function gwas_option(person::Person, snpdata::SnpData,
   return execution_error = false
 end # function gwas_option
 
-"""
-Add principal components into a pedigree frame and regression formula.
-The PCs are calculated via pca() from the SnpArrays module.
-"""
-function add_pcs!(pedigree_frame::DataFrame, snpdata::SnpData,
-  keyword::Dict{AbstractString, Any})
-
-  pcs = keyword["pcs"]
-  regress_form = keyword["regression_formula"]
-  #
-  # Perform PCA on the SNP data.
-  #
-  pcscore, pcloading, pcvariance = pca(snpdata.snpmatrix, pcs)
-  #
-  # Include the new covariates in the pedigree dataframe.
-  # NB: this process is *slow* for a large number of PCs!
-  #
-  for i = 1:pcs
-    pedigree_frame[Symbol("PC$i")] = zscore(pcscore[:,i])
-    regress_form = regress_form * " + PC$i"
-  end
-  #
-  # Save the expanded regression formula to the keyword dictionary.
-  #
-  keyword["regression_formula"] = regress_form
-  return nothing
-end # function add_pcs!
+##!!"""
+##!!Add principal components into a pedigree frame and regression formula.
+##!!The PCs are calculated via pca() from the SnpArrays module.
+##!!"""
+##!!function add_pcs!(pedigree_frame::DataFrame, snpdata::SnpDataStruct,
+##!!  keyword::Dict{AbstractString, Any})
+##!!
+##!!  pcs = keyword["pcs"]
+##!!  regress_form = keyword["regression_formula"]
+##!!  #
+##!!  # Perform PCA on the SNP data.
+##!!  #
+##!!  pcscore, pcloading, pcvariance = pca(snpdata.snpmatrix, pcs)
+##!!  #
+##!!  # Include the new covariates in the pedigree dataframe.
+##!!  # NB: this process is *slow* for a large number of PCs!
+##!!  #
+##!!  for i = 1:pcs
+##!!    pedigree_frame[Symbol("PC$i")] = zscore(pcscore[:,i])
+##!!    regress_form = regress_form * " + PC$i"
+##!!  end
+##!!  #
+##!!  # Save the expanded regression formula to the keyword dictionary.
+##!!  #
+##!!  keyword["regression_formula"] = regress_form
+##!!  return nothing
+##!!end # function add_pcs!
+#
+# Method to obtain path to this package's data files
+# so they can be used in the documentation and testing routines.
+# For example, datadir("Control file.txt") will return
+# "/path/to/package/data/Control file.txt"
+#
+datadir(parts...) = joinpath(@__DIR__, "..", "data", parts...)
 
 end # module MendelGWAS

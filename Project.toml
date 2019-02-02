@@ -1,0 +1,27 @@
+name = "MendelGWAS"
+desc = "GWAS; part of the OpenMendel project."
+uuid = "c1bad3ca-268b-5bf6-b82e-de8a361f94db"
+version = "0.5.0"
+license = "MIT"
+authors = ["Kenneth Lange", "Eric Sobel"]
+keywords = ["OpenMendel", "GWAS", "GLM"]
+
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+GLM = "38e38edf-8417-5370-95a0-9cbb8c7f171a"
+MendelBase = "4fb2d825-8540-5432-a3a3-b9ff66df2cb5"
+Missings = "e1d29d7a-bbdc-5cf2-9ac0-f12de2c33e28"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+SnpArrays = "4e780e97-f5bf-4111-9dc4-b70aaf691b06"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+
+[compat]
+julia = "1.0"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

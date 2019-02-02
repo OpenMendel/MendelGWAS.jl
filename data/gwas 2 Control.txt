@@ -4,8 +4,9 @@
 pedigree_file = gwas 2 ped.txt
 snpdefinition_file = gwas 2 snpdef.txt
 snpdata_file = gwas 1 data.bed
-output_file = gwas 2 Output.txt
-manhattan_plot_file = gwas 2 Manhattan Plot Output.png
+output_file = gwas 2 Output Summary.txt
+output_table = gwas 2 Output Table.txt
+manhattan_plot_file = gwas 2 Output Manhattan Plot.png
 #
 # Analysis parameters for GWAS option.
 #

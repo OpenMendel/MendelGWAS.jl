@@ -6,19 +6,19 @@ This [Julia](http://julialang.org/) package performs standard Genome-Wide Associ
 
 ## Installation
 
-*Note: The three OpenMendel packages (1) [SnpArrays](https://openmendel.github.io/SnpArrays.jl/latest/), (2) [Search](https://openmendel.github.io/Search.jl), and (3) [MendelBase](https://openmendel.github.io/MendelBase.jl) must be installed before any other OpenMendel package will run. It is easiest if these three packages are installed in the above order and before any other OpenMendel package.*
+*Note: The three OpenMendel packages (1) [SnpArrays](https://openmendel.github.io/SnpArrays.jl/latest/), (2) [MendelSearch](https://openmendel.github.io/MendelSearch.jl), and (3) [MendelBase](https://openmendel.github.io/MendelBase.jl) must be installed before any other OpenMendel package will run. It is easiest if these three packages are installed in the above order and before any other OpenMendel package.*
 
 Within Julia, use the package manager to install MendelGWAS:
 
-    Pkg.clone("https://github.com/OpenMendel/MendelGWAS.jl.git")
+    pkg> add https://github.com/OpenMendel/MendelGWAS.jl.git
 
-This package supports Julia v0.5 and v0.6.
+This package supports Julia v1.0+
 
 ## Data Files
 
 To run this analysis package you will need to prepare a Control file and have your data files available. The Control file holds the names of your data files and any optional parameters for the analysis. Details on the general format and contents of the Control and data files can be found on the MendelBase [documentation page](https://openmendel.github.io/MendelBase.jl). Descriptions of the specific options available within the MendelGWAS analysis package are in its [documentation page](https://openmendel.github.io/MendelGWAS.jl).
 
-There are example data files in the "docs" subfolder of each Mendel package, for example, ~/.julia/v0.5/MendelGWAS/docs.
+There are example data files in the "data" subfolder of each Mendel package.
 
 ## Running the Analysis
 

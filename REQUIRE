@@ -1,11 +1,13 @@
-julia 0.5 0.7-
-Compat
+julia 0.7
 
+CSV
 DataFrames
 Distributions
 GLM
 GR
+Missings
 Plots
+Printf
 PyPlot
 StatsBase
 
