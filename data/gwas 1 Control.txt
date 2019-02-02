@@ -5,6 +5,7 @@ plink_input_basename = gwas 1 data
 output_file = gwas 1 Output Summary.txt
 output_table = gwas 1 Output Table.txt
 manhattan_plot_file = gwas 1 Output Manhattan Plot.png
+qq_plot_file = gwas 1 Output QQ Plot.png
 #
 # Analysis parameters for GWAS option.
 #

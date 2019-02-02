@@ -8,6 +8,7 @@ module MendelGWAS
 # Required OpenMendel packages and modules.
 #
 using MendelBase
+using MendelPlots
 using SnpArrays
 #
 # Required external modules.
@@ -16,15 +17,10 @@ using CSV
 using DataFrames
 using Distributions
 using GLM
+using LinearAlgebra
 using Missings
 using Printf
 using StatsBase
-#
-# Use Plots as the plotting frontend and select a backend.
-#
-using Plots
-gr()
-## pyplot()
 
 export GWAS
 
@@ -62,6 +58,7 @@ function GWAS(control_file = ""; args...)
   keyword["min_success_rate_per_snp"] = 0.98
   keyword["manhattan_plot_file"] = ""
   keyword["output_table"] = "" # Table fo all SNPs and their p-values
+  keyword["qq_plot_file"] = ""
   keyword["regression"] = ""   # Linear, Logistic, or Poisson
   keyword["regression_formula"] = ""
   keyword["pcs"] = 0      # Number of Principal Components to include in model.
@@ -505,114 +502,39 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   end
   println(io, " ")
   #
+  # Create a new dataframe that will hold the data to output.
+  #
+  output_frame = DataFrame(SNP = snpdata.snpid,
+    Chromosome = snpdata.chromosome,
+    BasePair = snpdata.basepairs,
+    Pvalue = pvalue,
+    NegLog10Pvalue = -log10.(pvalue))
+  #
   # If requested, output a full listing of the p-values in csv format.
   #
   table_file = string(keyword["output_table"])
   if table_file != ""
-    #
-    # Create a new dataframe that will hold the data to output.
-    #
-    output_frame = DataFrame(SNP = snpdata.snpid,
-      Chromosome = snpdata.chromosome,
-      BasePair = snpdata.basepairs,
-      Pvalue = pvalue,
-      NegLog10Pvalue = -log10.(pvalue))
     CSV.write(table_file, output_frame;
       writeheader = true, delim = keyword["output_field_separator"],
       missingstring = keyword["output_missing_value"])
   end
   #
-  # If requested, output a Manhattan Plot in .png format.
+  # If requested, output a Manhattan or QQ plot.
   #
-  plot_file = keyword["manhattan_plot_file"]
-  if plot_file != ""
-    println(" \nCreating a Manhattan plot from the GWAS results.\n")
-    if !occursin(".png", plot_file); string(plot_file, ".png"); end
-    #
-    # Determine if any non-zero basepairs are present in the data set.
-    # If so, use basepair position as the x-axis for the Manhattan plot.
-    # Otherwise, use SNP number.
-    #
-    using_basepairs =  (maximum(chr_max_bp) > 0)
-    #
-    # Find adjusted basepair position for each SNP,
-    # which is the position from the start of the data.
-    #
-    if using_basepairs
-      current_chr_number = 1
-      running_bp_level = 0
-      adj_bp = deepcopy(snpdata.basepairs)
-      for snp = 2:snps
-        if snpdata.chromosome[snp] != snpdata.chromosome[snp-1]
-          running_bp_level = running_bp_level + chr_max_bp[current_chr_number]
-          current_chr_number = current_chr_number + 1
-        end
-        if current_chr_number > 1
-          adj_bp[snp] = adj_bp[snp] + running_bp_level
-        end
-      end
-    end
-    #
-    # Create a new dataframe that will hold the data to plot:
-    # (X) adjusted basepair positions or SNP numbers and (Y) -log10(p-values).
-    #
-    # Create the scatter plot of the -log10(p-values) grouped by chromosome.
-    # Set the size, shape, and color of the plotted elements.
-    #
-    # Specify the x-axis tick marks to be at the center of the chromosomes.
-    #
-    if using_basepairs
-      plot_frame = DataFrame(AdjBasepairs = adj_bp,
-        Chromosome = snpdata.chromosome,
-        NegativeLogPvalue = -log10.(pvalue))
-
-      plt = scatter(plot_frame[:AdjBasepairs], plot_frame[:NegativeLogPvalue],
-        group = plot_frame[:Chromosome],
-        markersize = 3, markerstrokewidth = 0, color_palette = :rainbow)
-
-      xticks = by(plot_frame, :Chromosome,
-        plot_frame -> mean(plot_frame[:AdjBasepairs]))
-    else
-      plot_frame = DataFrame(SNPnumber = 1:snps,
-        Chromosome = snpdata.chromosome,
-        NegativeLogPvalue = -log10.(pvalue))
-
-      plt = scatter(plot_frame[:SNPnumber], plot_frame[:NegativeLogPvalue],
-        group = plot_frame[:Chromosome],
-        markersize = 3, markerstrokewidth = 0, color_palette = :rainbow)
-
-      xticks = by(plot_frame, :Chromosome,
-        plot_frame -> mean(plot_frame[:SNPnumber]))
-    end
-    #
-    # Use x-axis tick marks only in the odd numbered chromosomes.
-    # Also, label the x-axis.
-    #
-    xaxis!(plt, xticks = (sort(xticks[:x1])[1:2:end], 1:2:size(xticks, 1)))
-    xaxis!(plt, xlabel = "Chromosome")
-    #
-    # Add the y-axis information.
-    #
-    yaxis!(plt, ylabel = "-log10(p-value)")
-    #
-    # Use a grey grid and remove the legend.
-    #
-    plot!(plt, gridcolor = :lightgrey, legend = false)
-    #
-    # Add an overall title.
-    #
-    plot!(plt, title = "Manhattan Plot", window_title = "Manhattan Plot")
-    #
-    # Add a dashed horizontal line that indicates the Bonferonni threshold.
-    #
-    Plots.abline!(plt, 0, -log10(.05 / length(pvalue)), color = :black,
-        line = :dash)
-##    hline!(plt, -log10(0.05 / length(pvalue)), color = :black, line = :dash)
-    #
-    # Display the plot and then save the plot to a file.
-    #
-    ## display(plt)
-    savefig(plt, plot_file)
+  manhat_plot_file = string(keyword["manhattan_plot_file"])
+  qq_plot_file = string(keyword["qq_plot_file"])
+  if manhat_plot_file != "" || qq_plot_file != ""
+    println(" \nPlots being drawn using MendelPlots package.")
+  end
+  if manhat_plot_file != ""
+    manhattan(output_frame, outfile = manhat_plot_file,
+##      linecolor = colorant"black",
+      chrvar = "Chromosome", posvar = "BasePair", pvalvar = "Pvalue")
+    println(" \nManhattan plot of GWAS results is in file: ", manhat_plot_file)
+  end
+  if qq_plot_file != ""
+    qq(output_frame, outfile = qq_plot_file, pvalvar = "Pvalue")
+    println(" \nQQ plot of GWAS results is in file: ", qq_plot_file)
   end
   return execution_error = false
 end # function gwas_option

@@ -4,12 +4,11 @@ CSV
 DataFrames
 Distributions
 GLM
-GR
+LinearAlgebra
 Missings
-Plots
 Printf
-PyPlot
 StatsBase
 
 MendelBase
+MendelPlots
 SnpArrays
