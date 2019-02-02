@@ -33,7 +33,7 @@ This is the wrapper function for the GWAS analysis option.
 """
 function GWAS(control_file = ""; args...)
 
-  GWAS_VERSION :: VersionNumber = v"0.1.0"
+  GWAS_VERSION :: VersionNumber = v"0.5.0"
   #
   # Print the logo. Store the initial directory.
   #
