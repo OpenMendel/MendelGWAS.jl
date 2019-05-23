@@ -59,7 +59,7 @@ function GWAS(control_file = ""; args...)
   keyword["manhattan_plot_file"] = ""
   keyword["output_table"] = "" # Table fo all SNPs and their p-values
   keyword["qq_plot_file"] = ""
-  keyword["regression"] = ""   # Linear, Logistic, or Poisson
+  keyword["regression"] = ""   # linear, logistic, or poisson
   keyword["regression_formula"] = ""
   keyword["pcs"] = 0      # Number of Principal Components to include in model.
   #
@@ -84,6 +84,12 @@ function GWAS(control_file = ""; args...)
     locus_frame, phenotype_frame, pedigree_frame, snp_definition_frame) =
     read_external_data_files(keyword)
   #
+  # Check if SNP data were read.
+  #
+  if snpdata.snps == 0
+    println(" \n\nERROR: This analysis requires SNP data and none were read!\n")
+  else
+  #
   # If principal components are requested to be included in the model,
   # then call a function that will use the PCA routine in SnpArrays,
   # and will add these PCs to the pedigree_frame. Once in the pedigree frame
@@ -96,12 +102,13 @@ function GWAS(control_file = ""; args...)
   #
   # Execute the specified analysis.
   #
-  println(" \nAnalyzing the data.\n")
-  execution_error = gwas_option(person, snpdata, pedigree_frame, keyword)
-  if execution_error
-    println(" \n \nERROR: Mendel terminated prematurely!\n")
-  else
-    println(" \n \nMendel's analysis is finished.\n")
+    println(" \nAnalyzing the data.\n")
+    execution_error = gwas_option(person, snpdata, pedigree_frame, keyword)
+    if execution_error
+      println(" \n \nERROR: Mendel terminated prematurely!\n")
+    else
+      println(" \n \nMendel's analysis is finished.\n")
+    end
   end
   #
   # Finish up by closing, and thus flushing, any output files.
@@ -129,7 +136,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   min_success_rate_per_snp = keyword["min_success_rate_per_snp"]
   #
   # Recognize the three basic GWAS regression models:
-  # Linear, Logistic, and Poisson.
+  # linear, logistic, and poisson.
   # For these three we will use fast internal regression code,
   # unless an interaction term is detected.
   #
@@ -160,7 +167,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
       "Set the keyword regression to either:\n" *
       "  linear (for usual quantitative traits),\n" *
       "  logistic (for usual qualitative traits),\n" *
-      "  Poisson, or blank (for unusual analyses).\n" *
+      "  poisson, or blank (for unusual analyses).\n" *
       "If keyword regression is not assigned, then the keywords\n" *
       "'distribution' and 'link' must be assigned names of functions.\n \n"))
   else
@@ -173,7 +180,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
      regression_type != "logistic" && regression_type != "poisson"
     throw(ArgumentError(
      "The keyword regression (currently: $regression_type) must be assigned\n" *
-     "the value 'linear', 'logistic', 'Poisson', or blank.\n \n"))
+     "the value 'linear', 'logistic', 'poisson', or blank.\n \n"))
   end
   #
   # Retrieve and error check the regression formula.
