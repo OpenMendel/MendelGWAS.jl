@@ -304,6 +304,11 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   deleteat!(names_list, findall((in)([:EntryOrder]), names_list))
   model.df = model.df[:, names_list]
   #
+  # Find which predictors have complete data.
+  # Note that the completeness_mask should be applied after the sample_mask.
+  #
+  completeness_mask = completecases(model.df)
+  #
   # First consider the base model with no SNPs included.
   # If using one of the standard regression models without interactions,
   # then use the fast regression code in OpenMendel's general utilities file.
@@ -314,10 +319,8 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     # Create the model matrix, initially still with any missing predictor values.
     # Copy only the complete rows into design matrix X and response vector y,
     # thus they have size = people - too.few.genotypes - incomplete.predictors.
-    # Note that the completeness_mask should be applied after the sample_mask.
     #
     modelmatrx = ModelMatrix(model)
-    completeness_mask = completecases(model.df)
     cases = sum(completeness_mask)
     predictors = size(modelmatrx.m, 2)
     X = zeros(cases, predictors)
@@ -381,9 +384,11 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
 ##  dosage = zeros(people)
   dosage = zeros(sum(sample_mask))
   pvalue = ones(snps)
-  alt_estimate = zeros(predictors+1)
-  if fast_method && regression_type == "linear"
-    alt_residual = zeros(cases)
+  if fast_method
+    alt_estimate = zeros(predictors+1)
+    if regression_type == "linear"
+      alt_residual = zeros(cases)
+    end
   end
   skipped_snps = 0
   chr_max_bp = zeros(Integer, 50) # Assumes number of chromosomes <= 50.
