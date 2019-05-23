@@ -278,10 +278,12 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   end
   #
   # To filter the SNP data, first find the SNPs and samples
-  # that surpass the requested success rates.
+  # that surpass the requested success rates and MAF.
   #
   sample_mask, snp_mask = SnpArrays.filter(snpdata.snpmatrix,
-    min_success_rate_per_snp, min_success_rate_per_sample)
+    min_success_rate_per_row = min_success_rate_per_snp,
+    min_success_rate_per_col = min_success_rate_per_sample,
+    min_maf = maf_threshold)
   #
   # Create a model frame.
   # Note that the model data collections invoke the sample_mask,
@@ -405,7 +407,8 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     # Skip analysis of SNPs with MAF or genotype success rate
     # below the specified thresholds.
     #
-    if snpdata.maf[snp] <= maf_threshold || !snp_mask[snp]
+##    if snpdata.maf[snp] <= maf_threshold || !snp_mask[snp]
+    if !snp_mask[snp]
       skipped_snps = skipped_snps + 1
       continue
     end
