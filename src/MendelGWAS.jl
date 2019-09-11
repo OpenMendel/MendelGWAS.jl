@@ -28,15 +28,12 @@ export GWAS
 This is the wrapper function for the GWAS analysis option.
 """
 function GWAS(control_file = ""; args...)
-
-  GWAS_VERSION :: VersionNumber = v"0.5.0"
   #
   # Print the logo. Store the initial directory.
   #
   print(" \n \n")
   println("     Welcome to OpenMendel's")
   println("      GWAS analysis option")
-  println("        version ", GWAS_VERSION)
   print(" \n \n")
   println("Reading the data.\n")
   initial_directory = pwd()
@@ -57,7 +54,7 @@ function GWAS(control_file = ""; args...)
   keyword["min_success_rate_per_sample"] = 0.98
   keyword["min_success_rate_per_snp"] = 0.98
   keyword["manhattan_plot_file"] = ""
-  keyword["output_table"] = "" # Table fo all SNPs and their p-values
+  keyword["output_table"] = "" # Table of all SNPs and their p-values
   keyword["qq_plot_file"] = ""
   keyword["regression"] = ""   # linear, logistic, or poisson
   keyword["regression_formula"] = ""
@@ -81,7 +78,7 @@ function GWAS(control_file = ""; args...)
   # Read the genetic data from the external files named in the keywords.
   #
   (pedigree, person, nuclear_family, locus, snpdata,
-    locus_frame, phenotype_frame, pedigree_frame, snp_definition_frame) =
+    locus_frame, phenotype_frame, person_frame, snp_definition_frame) =
     read_external_data_files(keyword)
   #
   # Check if SNP data were read.
@@ -92,18 +89,18 @@ function GWAS(control_file = ""; args...)
   #
   # If principal components are requested to be included in the model,
   # then call a function that will use the PCA routine in SnpArrays,
-  # and will add these PCs to the pedigree_frame. Once in the pedigree frame
+  # and will add these PCs to the person_frame. Once in the pedigree frame
   # these PCs will be included in the regression procedure.
   # Each PC will be named PCn where n is its number, e.g., "PC1".
   #
 ##!!  if keyword["pcs"] > 0
-##!!    add_pcs!(pedigree_frame, snpdata, keyword)
+##!!    add_pcs!(person_frame, snpdata, keyword)
 ##!!  end
   #
   # Execute the specified analysis.
   #
     println(" \nAnalyzing the data.\n")
-    execution_error = gwas_option(person, snpdata, pedigree_frame, keyword)
+    execution_error = gwas_option(person, snpdata, person_frame, keyword)
     if execution_error
       println(" \n \nERROR: Mendel terminated prematurely!\n")
     else
@@ -123,7 +120,7 @@ end # function GWAS
 This function performs GWAS on a set of traits.
 """
 function gwas_option(person::Person, snpdata::SnpDataStruct,
-  pedigree_frame::DataFrame, keyword::Dict{AbstractString, Any})
+  person_frame::DataFrame, keyword::Dict{AbstractString, Any})
 
   TAB_CHAR :: Char = Char(9)
 
@@ -219,7 +216,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   if side[2] == ""; side[2] = "1"; end
   lhs = Meta.parse(side[1])
   rhs = Meta.parse(side[2])
-  if !(lhs in names(pedigree_frame))
+  if !(lhs in names(person_frame))
     lhs_string = string(lhs)
     throw(ArgumentError(
       "The field named on the left hand side of the formula specified in\n" *
@@ -242,17 +239,18 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   # create a new field of type Float64 that replaces :Sex.
   #
   if first(something(findfirst("Sex", string(rhs)), 0:-1)) > 0 &&
-     in(:Sex, names(pedigree_frame))
-    pedigree_frame[:NumericSex] = ones(people)
+     in(:Sex, names(person_frame))
+    person_frame[!, :NumericSex] = ones(people)
     for i = 1:people
-      s = pedigree_frame[i, :Sex]
+      s = person_frame[i, :Sex]
       if !isa(Meta.parse(string(s), raise=false), Number); s = lowercase(s); end
-      if !(s in keyword["female"]); pedigree_frame[i, :NumericSex] = -1.0; end
+      if !(s in keyword["female"]); person_frame[i, :NumericSex] = -1.0; end
     end
-    names_list = names(pedigree_frame)
+    names_list = names(person_frame)
     deleteat!(names_list, findall((in)([:Sex]), names_list))
-    pedigree_frame = pedigree_frame[:, names_list]
-    rename!(pedigree_frame, :NumericSex => :Sex)
+##    person_frame = person_frame[:, names_list]
+    select!(person_frame, names_list)
+    rename!(person_frame, :NumericSex => :Sex)
   end
   #
   # For Logistic regression make sure the cases are 1.0,
@@ -262,19 +260,20 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   #
   case_label = keyword["affected_designator"]
   if regression_type == "logistic" && case_label != ""
-    pedigree_frame[:NumericTrait] = zeros(people)
+    person_frame[!, :NumericTrait] = zeros(people)
     for i = 1:people
-      s = strip(string(pedigree_frame[i, lhs]))
+      s = strip(string(person_frame[i, lhs]))
       if s == "" || s == "NaN" || s == "missing" || s == "NA"
-        pedigree_frame[i, :NumericTrait] = missing
+        person_frame[i, :NumericTrait] = missing
       elseif s == case_label
-        pedigree_frame[i, :NumericTrait] = 1.0
+        person_frame[i, :NumericTrait] = 1.0
       end
     end
-    names_list = names(pedigree_frame)
+    names_list = names(person_frame)
     deleteat!(names_list, findall((in)([lhs]), names_list))
-    pedigree_frame = pedigree_frame[:, names_list]
-    rename!(pedigree_frame, :NumericTrait => lhs)
+##    person_frame = person_frame[:, names_list]
+    select!(person_frame, names_list)
+    rename!(person_frame, :NumericTrait => lhs)
   end
   #
   # To filter the SNP data, first find the SNPs and samples
@@ -293,16 +292,17 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
 ## Does model include individuals that have missing values in lhs?? rhs??
 ##
   fm = @eval(@formula($lhs ~ $rhs))
-  model = ModelFrame(fm, pedigree_frame[sample_mask, :])
+  model = ModelFrame(fm, person_frame[sample_mask, :])
   #
   # To ensure that the trait and SNPs occur in the same order, sort the
   # the model dataframe by the entry-order column of the pedigree frame.
   #
-  model.df[:EntryOrder] = pedigree_frame[sample_mask, :EntryOrder]
+  model.df[!, :EntryOrder] = person_frame[sample_mask, :EntryOrder]
   sort!(model.df, :EntryOrder)
   names_list = names(model.df)
   deleteat!(names_list, findall((in)([:EntryOrder]), names_list))
-  model.df = model.df[:, names_list]
+##  model.df = model.df[:, names_list]
+  select!(model.df, names_list)
   #
   # Find which predictors have complete data.
   # Note that the completeness_mask should be applied after the sample_mask.
@@ -458,7 +458,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     # using the GLM package.
     #
     else
-      model.df[:SNP] = dosage[completeness_mask]
+      model.df[!, :SNP] = dosage[completeness_mask]
       snp_model = fit(GeneralizedLinearModel, fm, model.df,
         distribution_family, link)
       pvalue[snp] = coeftable(snp_model).cols[end][end].v
@@ -534,7 +534,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
       missingstring = keyword["output_missing_value"])
   end
   #
-  # If requested, output a Manhattan or QQ plot.
+  # If requested, output a Manhattan plot or QQ plot.
   #
   manhat_plot_file = string(keyword["manhattan_plot_file"])
   qq_plot_file = string(keyword["qq_plot_file"])
@@ -558,7 +558,7 @@ end # function gwas_option
 ##!!Add principal components into a pedigree frame and regression formula.
 ##!!The PCs are calculated via pca() from the SnpArrays module.
 ##!!"""
-##!!function add_pcs!(pedigree_frame::DataFrame, snpdata::SnpDataStruct,
+##!!function add_pcs!(person_frame::DataFrame, snpdata::SnpDataStruct,
 ##!!  keyword::Dict{AbstractString, Any})
 ##!!
 ##!!  pcs = keyword["pcs"]
@@ -572,7 +572,7 @@ end # function gwas_option
 ##!!  # NB: this process is *slow* for a large number of PCs!
 ##!!  #
 ##!!  for i = 1:pcs
-##!!    pedigree_frame[Symbol("PC$i")] = zscore(pcscore[:,i])
+##!!    person_frame[!, Symbol("PC$i")] = zscore(pcscore[:,i])
 ##!!    regress_form = regress_form * " + PC$i"
 ##!!  end
 ##!!  #
