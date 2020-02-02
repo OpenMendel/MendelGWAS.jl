@@ -12,4 +12,4 @@ qq_plot_file = gwas 2 Output QQ Plot.png
 # Analysis parameters for GWAS option.
 #
 regression = logistic
-regression_formula = Case_Control ~ Sex + BMI
+regression_formula = Case_Control ~ 1 + Sex * BMI

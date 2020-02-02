@@ -21,6 +21,7 @@ using LinearAlgebra
 using Missings
 using Printf
 using StatsBase
+using StatsModels
 
 export GWAS
 
@@ -234,9 +235,37 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     fast_method = false
   end
   #
-  # Change sex designations to 1.0 (females) and -1.0 (males).
+  # Create a list of the names of the columns used in the formula.
+  # NB: Since this procedure only looks for string matches
+  # it will be flummoxed by, for example, a column named "l",
+  # if the "log" function is used in the formula.
+  #
+  namecolumns = names(person_frame)
+  totalcolumns = size(namecolumns, 1)
+  indicat = falses(totalcolumns)
+  for i = 1:totalcolumns
+    namestring = string(namecolumns[i])
+    if namestring == lhs ||
+       first(something(findfirst(namestring, string(rhs)), 0:-1)) > 0
+      indicat[i] = true
+    end
+  end
+  names_in_formula = fill(:placeholder, sum(indicat))
+  j = 0
+  for i = 1:totalcolumns
+    if indicat[i]
+      j = j + 1
+      names_in_formula[j] = namecolumns[i]
+    end
+  end
+  if j != sum(indicat)
+    throw(ArgumentError("Inconsistency in formula column count./n /n"))
+  end
+  #
+  # Change sex designations to 1.0 (for females) and -1.0 (for males).
   # Since the field :Sex may have type String,
   # create a new field of type Float64 that replaces :Sex.
+  # Note that unrecognized sexes are labeled female.
   #
   if first(something(findfirst("Sex", string(rhs)), 0:-1)) > 0 &&
      in(:Sex, names(person_frame))
@@ -248,7 +277,6 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     end
     names_list = names(person_frame)
     deleteat!(names_list, findall((in)([:Sex]), names_list))
-##    person_frame = person_frame[:, names_list]
     select!(person_frame, names_list)
     rename!(person_frame, :NumericSex => :Sex)
   end
@@ -271,43 +299,61 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     end
     names_list = names(person_frame)
     deleteat!(names_list, findall((in)([lhs]), names_list))
-##    person_frame = person_frame[:, names_list]
     select!(person_frame, names_list)
     rename!(person_frame, :NumericTrait => lhs)
   end
   #
   # To filter the SNP data, first find the SNPs and samples
   # that surpass the requested success rates and MAF.
+  # Note that the sample_mask is on the people in entry order!
   #
   sample_mask, snp_mask = SnpArrays.filter(snpdata.snpmatrix,
     min_success_rate_per_row = min_success_rate_per_snp,
     min_success_rate_per_col = min_success_rate_per_sample,
     min_maf = maf_threshold)
   #
-  # Create a model frame.
-  # Note that the model data collections invoke the sample_mask,
-  # thus have size = people - too.few.genotypes.
+  # Create a model frame, reordering the individuals (i.e., the rows)
+  # by their entry order to align with the corresponding SNP data.
   #
-##
-## Does model include individuals that have missing values in lhs?? rhs??
-##
-  fm = @eval(@formula($lhs ~ $rhs))
-  model = ModelFrame(fm, person_frame[sample_mask, :])
+  model_frame = deepcopy(person_frame)
+  sort!(model_frame, :EntryOrder)
   #
-  # To ensure that the trait and SNPs occur in the same order, sort the
-  # the model dataframe by the entry-order column of the pedigree frame.
+  # Restrict the model_frame to the columns used in the regression formula.
+  # (Perhaps wait on this until we know it's working well.)
   #
-  model.df[!, :EntryOrder] = person_frame[sample_mask, :EntryOrder]
-  sort!(model.df, :EntryOrder)
-  names_list = names(model.df)
-  deleteat!(names_list, findall((in)([:EntryOrder]), names_list))
-##  model.df = model.df[:, names_list]
-  select!(model.df, names_list)
+##  select!(model_frame, names_in_formula)
   #
-  # Find which predictors have complete data.
+  # Remove the individuals with low genotyping success rates
+  # using the sample_mask from SnpArrays.
+  # Note that now rows = people - too.few.genotypes.
+  #
+  model_frame = model_frame[sample_mask, :]
+  #
+  # Next, drop all individuals with missing values among the variables
+  # used in the regression formula. Keep track of the corresponding mask
+  # to use with the SNP data. Thus, model_frame has no missing data.
   # Note that the completeness_mask should be applied after the sample_mask.
+  # Note that now rows = people - too.few.genotypes - incomplete.predictors.
   #
-  completeness_mask = completecases(model.df)
+  completeness_mask = completecases(model_frame, names_in_formula)
+  dropmissing!(model_frame, names_in_formula, disallowmissing=true)
+  cases = size(model_frame, 1) # also = sum(completeness_mask)
+##
+##   model = ModelFrame(fm, person_frame[sample_mask, :])
+##   #
+##   # To ensure that the trait and SNPs occur in the same order, sort the
+##   # the model dataframe by the entry-order column of the pedigree frame.
+##   #
+##   model.df[!, :EntryOrder] = person_frame[sample_mask, :EntryOrder]
+##   sort!(model.df, :EntryOrder)
+##   names_list = names(model.df)
+##   deleteat!(names_list, findall((in)([:EntryOrder]), names_list))
+##   select!(model.df, names_list)
+##   #
+##   # Find which predictors have complete data.
+##   # Note that the completeness_mask should be applied after the sample_mask.
+##   #
+##   completeness_mask = completecases(model.df)
   #
   # First consider the base model with no SNPs included.
   # If using one of the standard regression models without interactions,
@@ -316,24 +362,47 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   #
   if fast_method
     #
-    # Create the model matrix, initially still with any missing predictor values.
-    # Copy only the complete rows into design matrix X and response vector y,
-    # thus they have size = people - too.few.genotypes - incomplete.predictors.
+    # Create a model matrix using the regression formula and the model_frame.
+    # The model_frame is just a subset and rearrangement of the person_frame
+    # (a subset due to minimum genotype success rates, and a rearrangement
+    # due to the need to match the original SNP Array data order).
+    # The model matrix has columns for the intercept, any interaction terms,
+    # and any variable functions (such as "log(BMI)").
+    # The functions and macros used here are in the StatsModels package.
+    # Here y is the vector of responses and X is the matrix of predictors.
     #
-    modelmatrx = ModelMatrix(model)
-    cases = sum(completeness_mask)
-    predictors = size(modelmatrx.m, 2)
-    X = zeros(cases, predictors)
-    base_estimate = zeros(predictors)
-    for j = 1:predictors
-      X[:, j] = modelmatrx.m[completeness_mask, j]
-    end
+    fm = @eval(@formula($lhs ~ $rhs))
+##    fm = @eval(@formula($side[1] ~ $side[2]))
+    schem = schema(fm, model_frame)
+    fs = apply_schema(fm, schem)
+    predictor_names = coefnames(fs)[2]
+    response, X = modelcols(fs, model_frame)
+    predictors = size(X, 2)
     y = zeros(cases)
-    y[1:end] = model.df[completeness_mask, lhs]
+    y[1:end] = model_frame[!, lhs]
+    if predictors != size(predictor_names, 1)
+      throw(ArgumentError( "Inconsistency in number of predictors.\n \n"))
+    end
+##    #
+##    # Create the model matrix, initially still with any missing predictor values.
+##    # Copy only the complete rows into design matrix X and response vector y,
+##    # thus they have size = people - too.few.genotypes - incomplete.predictors.
+##    #
+##    modelmatrx = ModelMatrix(model)
+##    cases = sum(completeness_mask)
+##    predictors = size(modelmatrx.m, 2)
+##    X = zeros(cases, predictors)
+##    base_estimate = zeros(predictors)
+##    for j = 1:predictors
+##      X[:, j] = modelmatrx.m[completeness_mask, j]
+##    end
+##    y = zeros(cases)
+##    y[1:end] = model.df[completeness_mask, lhs]
     #
     # Estimate parameters under the base model.
     # Then, for linear regression, record the vector of residuals.
     #
+    base_estimate = zeros(predictors)
     (base_estimate, base_loglikelihood) = fast_regress(X, y, regression_type)
     if regression_type == "linear"
       base_residual = y - (X * base_estimate)
@@ -341,21 +410,13 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     #
     # Output the results of the base model.
     #
-    println(io, " ")
-    println(io, "Summary for Base Model with ", fm)
+    println(io, "\nResults for Base Model:\n  ", fm, "\n")
     println(io, "Regression model: ", regression_type)
     println(io, "Link function: ", "canonical")
-    names_list = names(model.df)
-    model_names = size(names_list,1)
-    outcome_index = findall((in)([lhs]), names_list)[1]
     println(io, "Base components' effect estimates: ")
-    println(io, "   (Intercept) : ",
-      round(base_estimate[outcome_index], sigdigits = 6))
-    for j = 1:model_names
-      if j != outcome_index
-        println(io, "   ", names_list[j], " : ",
+    for j = 1:predictors
+        println(io, "   ", string(predictor_names[j]), " : ",
           round(base_estimate[j], sigdigits = 6))
-      end
     end
     println(io, "Base model loglikelihood: ",
       round(base_loglikelihood, sigdigits = 8))
@@ -363,12 +424,13 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   else
     #
     # Let the GLM package estimate parameters. Output results.
-    # ?? Assumming the glm estimates only use complete cases??
+    # Note that model_frame only contains complete cases.
     #
-    base_model = glm(fm, model.df, distribution_family, link)
-    println(io, "Summary for Base Model:\n ")
-    print(io, base_model)
-    println(io, " ")
+    fm = @eval(@formula($lhs ~ $rhs))
+    base_model = glm(fm, model_frame, distribution_family, link)
+    println(io, "\nResults for Base Model:\n  ", base_model.mf.f, "\n")
+    print(io, coeftable(base_model))
+    println(io, "\n \n")
   end
   #
   # Now consider the alternative model with a SNP included.
@@ -381,7 +443,6 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   #
   # Analyze the SNP predictors one by one.
   #
-##  dosage = zeros(people)
   dosage = zeros(sum(sample_mask))
   pvalue = ones(snps)
   if fast_method
@@ -391,6 +452,8 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     end
   end
   skipped_snps = 0
+  signif_snps = 0
+  signif_threshold =  0.05 / snps
   chr_max_bp = zeros(Integer, 50) # Assumes number of chromosomes <= 50.
   current_chr_number = 1
   current_chr = snpdata.chromosome[1]
@@ -412,7 +475,6 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     # Skip analysis of SNPs with MAF or genotype success rate
     # below the specified thresholds.
     #
-##    if snpdata.maf[snp] <= maf_threshold || !snp_mask[snp]
     if !snp_mask[snp]
       skipped_snps = skipped_snps + 1
       continue
@@ -421,7 +483,6 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     # Copy the filtered SNP genotypes into a dosage vector,
     # allowing missing genotypes to be simplistically imputed based on MAF.
     #
-##    copyto!(dosage, view(snpdata.snpmatrix, :, snp); impute = true)
     copyto!(dosage, view(snpdata.snpmatrix, sample_mask, snp); impute = true)
     #
     # For the three basic regression types, analyze the alternative model
@@ -429,11 +490,9 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     # is below the specified threshold, carry out a likelihood ratio test.
     #
     if fast_method
-##      copy!(X[:, end], dosage[1:cases])
-##      @views X[:, end] = copy(dosage[1:cases])
-##      copy!(X[:, end], dosage[completeness_mask])
-##      copy!(X[:, end], view(dosage, completeness_mask))
-##      BLAS.blascopy!(cases, dosage[1:cases], 1, X[:, end], 1)
+##      copyto!(X[:, end], dosage[completeness_mask])
+##      copyto!(X[:, end], view(dosage, completeness_mask))
+##      X[:, end] = deepcopy(dosage[completeness_mask])
 ##      X[:, end] .= view(dosage, completeness_mask)
       X[:, end] = dosage[completeness_mask]
 ##if snp == 1; println(" X[:, end] = ", typeof(X), " :: ", X[:, end]); end
@@ -454,21 +513,46 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
         alt_residual .= y .- alt_residual
       end
     #
-    # For other distributions analyze the alternative model
-    # using the GLM package.
+    # For other distributions, analyze the alternative model using GLM package.
+    # Add the (abridges) SNP data to the design matrix and then fit the model.
     #
     else
-      model.df[!, :SNP] = dosage[completeness_mask]
-      snp_model = fit(GeneralizedLinearModel, fm, model.df,
+      model_frame[!, :SNP] = dosage[completeness_mask]
+      snp_model = fit(GeneralizedLinearModel, fm, model_frame,
         distribution_family, link)
-      pvalue[snp] = coeftable(snp_model).cols[end][end].v
+      #
+      # Find which row in the output holds the SNP predictor results
+      # and then store the p-value.
+      #
+      sm_predictor_names = coeftable(snp_model).rownms
+      sm_predictors = size(sm_predictor_names, 1)
+      snp_predictor = 0
+      for i = 1:sm_predictors
+        if sm_predictor_names[i] == "SNP"
+          snp_predictor = i
+          continue
+        end
+      end
+      if snp_predictor == 0
+        throw(ArgumentError( "Predictor named SNP not found in model.\n \n"))
+      end
+      pvalue[snp] = coeftable(snp_model).cols[4][snp_predictor]
     end
     #
     # Output regression results for potentially significant SNPs.
     #
-    if pvalue[snp] < 0.05 / snps
-      println(io, " \n")
-      println(io, "Summary for SNP ", snpdata.snpid[snp])
+    if pvalue[snp] < signif_threshold
+      if signif_snps == 0
+        println(io, "\n\nSummary Results for Alternative Model:")
+        if fast_method
+          println(io, "  ", fm)
+        else
+          println(io, "  ", snp_model.mf.f)
+        end
+        println(io, "Using significance threshold ", signif_threshold)
+      end
+      signif_snps = signif_snps + 1
+      println(io, "\nResults for SNP ", snpdata.snpid[snp])
       println(io, " on chromosome ", snpdata.chromosome[snp],
         " at basepair ", snpdata.basepairs[snp])
       println(io, "SNP p-value: ", round(pvalue[snp], sigdigits = 4))
@@ -489,14 +573,13 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
         println(io, "SNP effect estimate: ",
           round(alt_estimate[end], sigdigits = 4))
       else
-        println(io, "")
-        println(io, snp_model)
+        println(io, "\n", coeftable(snp_model), "\n")
       end
       #
       # For linear models, output the proportion of the base model's variance
       # that is explained by including this SNP in the model.
       #
-      if regression_type == "linear"
+      if fast_method && regression_type == "linear"
         variance_explained = 1 - (norm(alt_residual)^2 / norm(base_residual)^2)
         println(io, "Proportion of base-model variance explained: ",
           round(variance_explained, sigdigits = 4))
@@ -505,15 +588,22 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
 ##if snp == 1; return; end
   end
   #
+  # Report if there were no significant SNPs.
+  #
+  if signif_snps == 0
+    println(io, "\nNo SNPs passed the significance threshold.\n")
+  end
+  #
   # Output false discovery rates.
   #
   fdr = [0.01, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
-  (number_passing, threshold) = simes_fdr(pvalue, fdr, snps - skipped_snps)
+  (number_passing, threshold) =
+    simes_fdr(pvalue[snp_mask], fdr, snps - skipped_snps)
   println(io, " \n \n ")
   println(io, "        P-value   Number of Passing")
   println(io, "FDR    Threshold     Predictors \n")
   for i = 1:length(fdr)
-    @printf(io, "%4.2f   %8.5f   %9i\n", fdr[i], threshold[i], number_passing[i])
+   @printf(io, "%4.2f   %8.5f   %9i\n", fdr[i], threshold[i], number_passing[i])
   end
   println(io, " ")
   #
@@ -532,6 +622,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     CSV.write(table_file, output_frame;
       writeheader = true, delim = keyword["output_field_separator"],
       missingstring = keyword["output_missing_value"])
+    println(" \nTable of p-values for all SNPs is in file: ", table_file)
   end
   #
   # If requested, output a Manhattan plot or QQ plot.

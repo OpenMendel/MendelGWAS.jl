@@ -10,4 +10,4 @@ qq_plot_file = gwas 1 Output QQ Plot.png
 # Analysis parameters for GWAS option.
 #
 regression = linear
-regression_formula = Trait ~ Sex
+regression_formula = Trait ~ 1 + Sex
