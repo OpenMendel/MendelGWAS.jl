@@ -542,7 +542,8 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     # Output regression results for potentially significant SNPs.
     #
     if pvalue[snp] < signif_threshold
-      if signif_snps == 0
+      signif_snps = signif_snps + 1
+      if signif_snps == 1
         println(io, "\n\nSummary Results for Alternative Model:")
         if fast_method
           println(io, "  ", fm)
@@ -551,7 +552,6 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
         end
         println(io, "Using significance threshold ", signif_threshold)
       end
-      signif_snps = signif_snps + 1
       println(io, "\nResults for SNP ", snpdata.snpid[snp])
       println(io, " on chromosome ", snpdata.chromosome[snp],
         " at basepair ", snpdata.basepairs[snp])
@@ -591,6 +591,13 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   # Report if there were no significant SNPs.
   #
   if signif_snps == 0
+    println(io, "\n\nSummary Results for Alternative Model:")
+    if fast_method
+      println(io, "  ", fm)
+    else
+      println(io, "  ", snp_model.mf.f)
+    end
+    println(io, "Using significance threshold ", signif_threshold)
     println(io, "\nNo SNPs passed the significance threshold.\n")
   end
   #
