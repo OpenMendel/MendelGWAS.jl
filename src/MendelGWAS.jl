@@ -432,6 +432,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     print(io, coeftable(base_model))
     println(io, "\n \n")
   end
+  flush(io)
   #
   # Now consider the alternative model with a SNP included.
   # Add a column to the design matrix to hold the SNP dosages.
@@ -613,6 +614,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
    @printf(io, "%4.2f   %8.5f   %9i\n", fdr[i], threshold[i], number_passing[i])
   end
   println(io, " ")
+  flush(io)
   #
   # Create a new dataframe that will hold the data to output.
   #
