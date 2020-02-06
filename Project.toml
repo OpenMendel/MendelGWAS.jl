@@ -1,7 +1,7 @@
 name = "MendelGWAS"
 desc = "GWAS; part of the OpenMendel project."
 uuid = "c1bad3ca-268b-5bf6-b82e-de8a361f94db"
-version = "0.8.3"
+version = "0.8.4"
 license = "MIT"
 authors = ["Kenneth Lange <klange@ucla.edu>", "Eric Sobel <esobel@ucla.edu>", "OpenMendel Team"]
 keywords = ["OpenMendel", "GWAS", "association"]

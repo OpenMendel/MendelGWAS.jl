@@ -50,7 +50,7 @@ function GWAS(control_file = ""; args...)
   #
   keyword["distribution"] = "" # Binomial(), Gamma(), Normal(), Poisson(), etc.
   keyword["link"] = ""         # LogitLink(), IdentityLink(), LogLink(), etc.
-  keyword["lrt_threshold"] = 5e-8
+  keyword["lrt_threshold"] = -1.0 # Default changed below to 0.05 / SNPs
   keyword["maf_threshold"] = 0.01
   keyword["min_success_rate_per_sample"] = 0.98
   keyword["min_success_rate_per_snp"] = 0.98
@@ -59,6 +59,7 @@ function GWAS(control_file = ""; args...)
   keyword["qq_plot_file"] = ""
   keyword["regression"] = ""   # linear, logistic, or poisson
   keyword["regression_formula"] = ""
+  keyword["signif_threshold"] = -1.0 # Default changed below to 0.05 / SNPs
   keyword["pcs"] = 0      # Number of Principal Components to include in model.
   #
   # Process the run-time user-specified keywords that will control the analysis.
@@ -87,19 +88,31 @@ function GWAS(control_file = ""; args...)
   if snpdata.snps == 0
     println(" \n\nERROR: This analysis requires SNP data and none were read!\n")
   else
-  #
-  # If principal components are requested to be included in the model,
-  # then call a function that will use the PCA routine in SnpArrays,
-  # and will add these PCs to the person_frame. Once in the pedigree frame
-  # these PCs will be included in the regression procedure.
-  # Each PC will be named PCn where n is its number, e.g., "PC1".
-  #
+    #
+    # If the Significance Threshold has not been set by the user,
+    # set it to the Bonferroni correction: 0.05 / SNPs.
+    # If the LRT Threshold has not been set by the user,
+    # set it to the Significance Threshold.
+    #
+    if keyword["signif_threshold"] < 0.0
+      keyword["signif_threshold"] = 0.05 / snpdata.snps
+    end
+    if keyword["lrt_threshold"] < 0.0
+      keyword["lrt_threshold"] = keyword["signif_threshold"]
+    end
+    #
+    # If principal components are requested to be included in the model,
+    # then call a function that will use the PCA routine in SnpArrays,
+    # and will add these PCs to the person_frame. Once in the pedigree frame
+    # these PCs will be included in the regression procedure.
+    # Each PC will be named PCn where n is its number, e.g., "PC1".
+    #
 ##!!  if keyword["pcs"] > 0
 ##!!    add_pcs!(person_frame, snpdata, keyword)
 ##!!  end
-  #
-  # Execute the specified analysis.
-  #
+    #
+    # Execute the specified analysis.
+    #
     println(" \nAnalyzing the data.\n")
     execution_error = gwas_option(person, snpdata, person_frame, keyword)
     if execution_error
@@ -130,6 +143,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   io = keyword["output_unit"]
   lrt_threshold = keyword["lrt_threshold"]
   maf_threshold = keyword["maf_threshold"]
+  signif_threshold = keyword["signif_threshold"]
   min_success_rate_per_sample = keyword["min_success_rate_per_sample"]
   min_success_rate_per_snp = keyword["min_success_rate_per_snp"]
   #
@@ -446,6 +460,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   #
   dosage = zeros(sum(sample_mask))
   pvalue = ones(snps)
+  beta_snp = fill(NaN, snps)
   if fast_method
     alt_estimate = zeros(predictors+1)
     if regression_type == "linear"
@@ -454,7 +469,6 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   end
   skipped_snps = 0
   signif_snps = 0
-  signif_threshold =  0.05 / snps
   chr_max_bp = zeros(Integer, 50) # Assumes number of chromosomes <= 50.
   current_chr_number = 1
   current_chr = snpdata.chromosome[1]
@@ -504,6 +518,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
         (alt_estimate, alt_loglikelihood) = fast_regress(X, y, regression_type)
         lrt = 2.0 * (alt_loglikelihood - base_loglikelihood)
         pvalue[snp] = ccdf(Chisq(1), lrt)
+	beta_snp[snp] = alt_estimate[end]
       end
       #
       # Record the vector of residuals under this alternative model:
@@ -515,14 +530,14 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
       end
     #
     # For other distributions, analyze the alternative model using GLM package.
-    # Add the (abridges) SNP data to the design matrix and then fit the model.
+    # Add the (abridged) SNP data to the design matrix and then fit the model.
     #
     else
       model_frame[!, :SNP] = dosage[completeness_mask]
       snp_model = fit(GeneralizedLinearModel, fm, model_frame,
         distribution_family, link)
       #
-      # Find which row in the output holds the SNP predictor results
+      # Find which row in the output table holds the SNP predictor results
       # and then store the p-value.
       #
       sm_predictor_names = coeftable(snp_model).rownms
@@ -538,6 +553,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
         throw(ArgumentError( "Predictor named SNP not found in model.\n \n"))
       end
       pvalue[snp] = coeftable(snp_model).cols[4][snp_predictor]
+      beta_snp[snp] = coeftable(snp_model).cols[1][snp_predictor]
     end
     #
     # Output regression results for potentially significant SNPs.
@@ -622,7 +638,8 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     Chromosome = snpdata.chromosome,
     BasePair = snpdata.basepairs,
     Pvalue = pvalue,
-    NegLog10Pvalue = -log10.(pvalue))
+    NegLog10Pvalue = -log10.(pvalue),
+    Beta = beta_snp)
   #
   # If requested, output a full listing of the p-values in csv format.
   #
