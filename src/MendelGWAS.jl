@@ -228,7 +228,13 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
       "The left hand side should contain only the name of the trait field\n" *
       "in the Pedigree data. If the trait field is unnamed, use 'Trait'.\n \n"))
   end
-  if side[2] == ""; side[2] = "1"; end
+  if side[2] == "" || side[2] == "0" || side[2] == "-1"
+    println("WARNING: Since the right hand side of the provided")
+    println("regression formula ('$regression_formula') is empty")
+    println("(that is, has neither intercept nor predictor),")
+    println("the intercept has been added to the regression.\n ")
+    side[2] = "1"
+  end
   lhs = Meta.parse(side[1])
   rhs = Meta.parse(side[2])
   if !(lhs in names(person_frame))
@@ -254,22 +260,22 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   # it will be flummoxed by, for example, a column named "l",
   # if the "log" function is used in the formula.
   #
-  namecolumns = names(person_frame)
-  totalcolumns = size(namecolumns, 1)
-  indicat = falses(totalcolumns)
-  for i = 1:totalcolumns
-    namestring = string(namecolumns[i])
-    if namestring == lhs ||
+  persondf_colname = names(person_frame)
+  persondf_colnames = size(persondf_colname, 1)
+  indicat = falses(persondf_colnames)
+  for i = 1:persondf_colnames
+    namestring = string(persondf_colname[i])
+    if namestring == string(lhs) ||
        first(something(findfirst(namestring, string(rhs)), 0:-1)) > 0
       indicat[i] = true
     end
   end
-  names_in_formula = fill(:placeholder, sum(indicat))
+  formula_colname = fill(:placeholder, sum(indicat))
   j = 0
-  for i = 1:totalcolumns
+  for i = 1:persondf_colnames
     if indicat[i]
       j = j + 1
-      names_in_formula[j] = namecolumns[i]
+      formula_colname[j] = persondf_colname[i]
     end
   end
   if j != sum(indicat)
@@ -335,7 +341,7 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   # Restrict the model_frame to the columns used in the regression formula.
   # (Perhaps wait on this until we know it's working well.)
   #
-##  select!(model_frame, names_in_formula)
+##  select!(model_frame, formula_colname)
   #
   # Remove the individuals with low genotyping success rates
   # using the sample_mask from SnpArrays.
@@ -349,8 +355,8 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   # Note that the completeness_mask should be applied after the sample_mask.
   # Note that now rows = people - too.few.genotypes - incomplete.predictors.
   #
-  completeness_mask = completecases(model_frame, names_in_formula)
-  dropmissing!(model_frame, names_in_formula, disallowmissing=true)
+  completeness_mask = completecases(model_frame, formula_colname)
+  dropmissing!(model_frame, formula_colname, disallowmissing=true)
   cases = size(model_frame, 1) # also = sum(completeness_mask)
 ##
 ##   model = ModelFrame(fm, person_frame[sample_mask, :])
@@ -389,13 +395,20 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
 ##    fm = @eval(@formula($side[1] ~ $side[2]))
     schem = schema(fm, model_frame)
     fs = apply_schema(fm, schem)
-    predictor_names = coefnames(fs)[2]
     response, X = modelcols(fs, model_frame)
     predictors = size(X, 2)
     y = zeros(cases)
     y[1:end] = model_frame[!, lhs]
-    if predictors != size(predictor_names, 1)
-      throw(ArgumentError( "Inconsistency in number of predictors.\n \n"))
+    predictor_temp = coefnames(fs)[2]
+    if isa(predictor_temp, Array)
+      predictor_name = predictor_temp
+      if predictors != size(predictor_name, 1)
+        throw(ArgumentError("Inconsistency in number of predictors.\n \n"))
+      end
+    elseif isa(predictor_temp, String) && predictors == 1
+      predictor_name = [predictor_temp]
+    else
+      throw(ArgumentError("Inconsistency in number and type of predictors.\n \n"))
     end
 ##    #
 ##    # Create the model matrix, initially still with any missing predictor values.
@@ -424,25 +437,35 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     #
     # Output the results of the base model.
     #
-    println(io, "\nResults for Base Model:\n  ", fm, "\n")
-    println(io, "Regression model: ", regression_type)
-    println(io, "Link function: ", "canonical")
+    println(io, "\nOutput for MendelGWAS\n")
+    println(io, "Using regression type: ", regression_type)
+    println(io, "with the canonical link function.")
+    println(io, "\n \nResults for Base Model:\n  ", fm, "\n")
     println(io, "Base components' effect estimates: ")
     for j = 1:predictors
-        println(io, "   ", string(predictor_names[j]), " : ",
-          round(base_estimate[j], sigdigits = 6))
+      println(io, "   ", string(predictor_name[j]), " : ",
+        round(base_estimate[j], sigdigits = 6))
     end
     println(io, "Base model loglikelihood: ",
       round(base_loglikelihood, sigdigits = 8))
     println(io, " ")
   else
     #
-    # Let the GLM package estimate parameters. Output results.
+    # For other distributions or when including interactions,
+    # let the GLM package estimate parameters. Output results.
     # Note that model_frame only contains complete cases.
     #
     fm = @eval(@formula($lhs ~ $rhs))
     base_model = glm(fm, model_frame, distribution_family, link)
-    println(io, "\nResults for Base Model:\n  ", base_model.mf.f, "\n")
+    println(io, "\nOutput for MendelGWAS\n")
+    if regression_type == ""
+      println(io, "Using distribution type: ", distribution_family)
+      println(io, "and link function: ", link)
+    else
+      println(io, "Using regression type: ", regression_type)
+      println(io, "with the canonical link function.")
+    end
+    println(io, "\n \nResults for Base Model:\n  ", base_model.mf.f, "\n")
     print(io, coeftable(base_model))
     println(io, "\n \n")
   end
@@ -537,20 +560,12 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
       snp_model = fit(GeneralizedLinearModel, fm, model_frame,
         distribution_family, link)
       #
-      # Find which row in the output table holds the SNP predictor results
-      # and then store the p-value.
+      # Find which row in the output table holds the SNP predictor results.
+      # Store the p-value and beta value for the SNP.
       #
-      sm_predictor_names = coeftable(snp_model).rownms
-      sm_predictors = size(sm_predictor_names, 1)
-      snp_predictor = 0
-      for i = 1:sm_predictors
-        if sm_predictor_names[i] == "SNP"
-          snp_predictor = i
-          continue
-        end
-      end
-      if snp_predictor == 0
-        throw(ArgumentError( "Predictor named SNP not found in model.\n \n"))
+      snp_predictor = findfirst(isequal("SNP"), coeftable(snp_model).rownms)
+      if snp_predictor == 0 || snp_predictor == nothing
+       throw(ArgumentError("SNP predictor not found in alternative model.\n\n"))
       end
       pvalue[snp] = coeftable(snp_model).cols[4][snp_predictor]
       beta_snp[snp] = coeftable(snp_model).cols[1][snp_predictor]
@@ -561,13 +576,13 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
     if pvalue[snp] < signif_threshold
       signif_snps = signif_snps + 1
       if signif_snps == 1
-        println(io, "\n\nSummary Results for Alternative Model:")
+        println(io, "\n\nSummary of Significant Results for Alternative Model:")
         if fast_method
           println(io, "  ", fm)
         else
           println(io, "  ", snp_model.mf.f)
         end
-        println(io, "Using significance threshold ", signif_threshold)
+        println(io, "using p-value significance threshold: ", signif_threshold)
       end
       println(io, "\nResults for SNP ", snpdata.snpid[snp])
       println(io, " on chromosome ", snpdata.chromosome[snp],
@@ -608,13 +623,13 @@ function gwas_option(person::Person, snpdata::SnpDataStruct,
   # Report if there were no significant SNPs.
   #
   if signif_snps == 0
-    println(io, "\n\nSummary Results for Alternative Model:")
+    println(io, "\n\nSummary of Significant Results for Alternative Model:")
     if fast_method
       println(io, "  ", fm)
     else
       println(io, "  ", snp_model.mf.f)
     end
-    println(io, "Using significance threshold ", signif_threshold)
+    println(io, "using p-value significance threshold: ", signif_threshold)
     println(io, "\nNo SNPs passed the significance threshold.\n")
   end
   #

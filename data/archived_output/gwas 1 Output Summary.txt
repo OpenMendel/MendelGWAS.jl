@@ -1,9 +1,13 @@
 
+Output for MendelGWAS
+
+Using regression type: linear
+with the canonical link function.
+
+ 
 Results for Base Model:
   Trait ~ 1 + Sex
 
-Regression model: linear
-Link function: canonical
 Base components' effect estimates: 
    (Intercept) : 0.142482
    Sex : -0.0129378
@@ -11,9 +15,9 @@ Base model loglikelihood: -1258.177
  
 
 
-Summary Results for Alternative Model:
+Summary of Significant Results for Alternative Model:
   Trait ~ 1 + Sex + SNP
-Using significance threshold 5.0e-6
+using p-value significance threshold: 5.0e-6
 
 Results for SNP rs1935681
  on chromosome 6 at basepair 112651205

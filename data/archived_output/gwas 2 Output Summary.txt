@@ -1,4 +1,10 @@
 
+Output for MendelGWAS
+
+Using regression type: logistic
+with the canonical link function.
+
+ 
 Results for Base Model:
   Case_Control ~ 1 + Sex + BMI + Sex & BMI
 
@@ -14,9 +20,9 @@ Sex & BMI    -0.0145542     0.008393  -1.73409     0.0829  -0.0310042   0.001895
 
 
 
-Summary Results for Alternative Model:
+Summary of Significant Results for Alternative Model:
   Case_Control ~ 1 + Sex + BMI + SNP + Sex & BMI
-Using significance threshold 5.0e-6
+using p-value significance threshold: 5.0e-6
 
 Results for SNP rs1935681
  on chromosome 6 at basepair 112651205
