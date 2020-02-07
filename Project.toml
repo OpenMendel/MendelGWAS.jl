@@ -21,7 +21,7 @@ StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsModels = "3eaba693-59b7-5ba5-a881-562e759f1c8d"
 
 [compat]
-DataFrames = "0.2.0"
+DataFrames = "0.20.0"
 MendelPlots = "0.1.1"
 StatsModels = "0.6.7"
 julia = "1.1"
